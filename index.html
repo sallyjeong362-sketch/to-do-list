@@ -568,6 +568,21 @@
     document.getElementById('sumMsg').textContent = msg;
   }
 
+  /* ── 할 일 ↔ 일정표 블록 연동 ─────────── */
+  function syncSlotsWithTodo(t) {
+    var slots = day(selectedDate).slots;
+    var changed = 0;
+    Object.keys(slots).forEach(function (k) {
+      var sl = slots[k];
+      if (sl.name === t.title && sl.done !== t.done) {
+        sl.done = t.done;
+        addPoints(t.done ? POINT_SLOT : -POINT_SLOT);
+        changed++;
+      }
+    });
+    return changed;
+  }
+
   /* ── 렌더: 카테고리 탭 (1~4) ──────────── */
   function renderCatPanel(cat) {
     var panel = document.getElementById('panel');
@@ -599,7 +614,12 @@
         li.querySelector('.t-title').textContent = t.title;
         li.querySelector('.chk').addEventListener('click', function () {
           t.done = !t.done;
-          addPoints(t.done ? POINT_TODO : -POINT_TODO, t.done ? '할 일 완료!' : null);
+          addPoints(t.done ? POINT_TODO : -POINT_TODO, null);
+          var n = syncSlotsWithTodo(t);
+          if (t.done) {
+            toast(n ? '할 일 완료! 일정표 블록 ' + n + '개도 함께 완료 +' + (POINT_TODO + n * POINT_SLOT) + 'P'
+                    : '할 일 완료! +' + POINT_TODO + 'P');
+          }
           save(); renderAll();
         });
         li.querySelector('.edit').addEventListener('click', function () {
