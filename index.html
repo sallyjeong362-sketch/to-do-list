@@ -970,8 +970,41 @@
       markSynced();
     }).catch(function () { setSyncUI('error'); });
   }
-  function adoptRemote(remote) {
-    state = remote;
+  function mergeStates(local, remote) {
+    var lU = (local.meta && local.meta.updatedAt) || 0;
+    var rU = (remote.meta && remote.meta.updatedAt) || 0;
+    var newer = rU >= lU ? remote : local;
+    var older = rU >= lU ? local : remote;
+    var out = { days: {}, meta: {} };
+    var dates = {};
+    Object.keys(local.days || {}).forEach(function (k) { dates[k] = 1; });
+    Object.keys(remote.days || {}).forEach(function (k) { dates[k] = 1; });
+    Object.keys(dates).sort().forEach(function (dk) {
+      var a = (newer.days || {})[dk], b = (older.days || {})[dk];
+      if (!a || !b) { out.days[dk] = JSON.parse(JSON.stringify(a || b)); return; }
+      var merged = { todos: [], slots: {} };
+      var seenId = {}, seenCarry = {};
+      var carryKey = function (t) { return t.cat + '|' + t.title + '|' + (t.from || ''); };
+      (a.todos || []).forEach(function (t) {
+        merged.todos.push(t); seenId[t.id] = 1;
+        if (t.carried) seenCarry[carryKey(t)] = 1;
+      });
+      (b.todos || []).forEach(function (t) {
+        if (seenId[t.id]) return;
+        if (t.carried && seenCarry[carryKey(t)]) return;
+        merged.todos.push(t);
+      });
+      var sa = a.slots || {}, sb = b.slots || {};
+      Object.keys(sb).forEach(function (m) { merged.slots[m] = sb[m]; });
+      Object.keys(sa).forEach(function (m) { merged.slots[m] = sa[m]; });
+      out.days[dk] = JSON.parse(JSON.stringify(merged));
+    });
+    out.meta.points = Math.max((local.meta && local.meta.points) || 0, (remote.meta && remote.meta.points) || 0);
+    out.meta.updatedAt = Math.max(lU, rU);
+    return out;
+  }
+  function adoptState(next) {
+    state = next;
     if (!state.meta) state.meta = { points: 0 };
     if (!state.days) state.days = {};
     saveLocal();
@@ -985,9 +1018,11 @@
       if (!r.ok) throw new Error(r.status);
       return r.json();
     }).then(function (remote) {
-      var rU = (remote && remote.meta && remote.meta.updatedAt) || 0;
-      var lU = (state.meta && state.meta.updatedAt) || 0;
-      if (remote && remote.days && rU > lU) adoptRemote(remote);
+      if (remote && typeof remote === 'object' && remote.days) {
+        var merged = mergeStates(state, remote);
+        if (JSON.stringify(merged) !== JSON.stringify(state)) adoptState(merged);
+        if (JSON.stringify(merged) !== JSON.stringify(remote)) schedulePush();
+      }
       markSynced();
     }).catch(function () { setSyncUI('error'); });
   }
@@ -1022,17 +1057,12 @@
       return r.json();
     }).then(function (remote) {
       sync.id = id;
-      var rU = (remote && remote.meta && remote.meta.updatedAt) || 0;
-      var lU = (state.meta && state.meta.updatedAt) || 0;
-      var localHasData = Object.keys(state.days).length > 0;
-      if (remote && remote.days && (!localHasData || rU >= lU)) {
-        adoptRemote(remote);
-        markSynced();
-      } else {
-        pushNow();
+      if (remote && typeof remote === 'object' && remote.days) {
+        adoptState(mergeStates(state, remote));
       }
+      pushNow();
       renderSyncModal();
-      toast('동기화가 연결됐어요 ☁');
+      toast('동기화가 연결됐어요 ☁ 두 기기의 데이터를 합쳤어요');
     }).catch(function () {
       setSyncUI('error');
       alert('해당 코드를 찾을 수 없어요. 코드를 다시 확인해 주세요.');
