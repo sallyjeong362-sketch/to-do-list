@@ -25,6 +25,10 @@
     --row-line: #f0ede6;
     --chip-ink: #ffffff;
     --sun: #c0564f;
+    --slot-c1: #e7eef6;
+    --slot-c2: #e9f1e8;
+    --slot-c3: #f8efe2;
+    --slot-c4: #f0eaf5;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -42,6 +46,10 @@
       --row-line: #34322b;
       --chip-ink: #22211d;
       --sun: #d98079;
+      --slot-c1: #29323d;
+      --slot-c2: #2c352b;
+      --slot-c3: #3c342a;
+      --slot-c4: #342e3b;
     }
   }
   :root[data-theme="light"] {
@@ -49,12 +57,14 @@
     --line: #e7e3da; --accent: #6b8e6f; --sel-bg: #eef3ee;
     --carry-ink: #b5651d; --carry-bg: #faeede; --slot-bg: #e8f2f2;
     --hover-bg: #f4f7f4; --row-line: #f0ede6; --chip-ink: #ffffff; --sun: #c0564f;
+    --slot-c1: #e7eef6; --slot-c2: #e9f1e8; --slot-c3: #f8efe2; --slot-c4: #f0eaf5;
   }
   :root[data-theme="dark"] {
     --bg: #22211d; --card: #2c2b26; --ink: #e8e5dc; --muted: #9a968b;
     --line: #3e3c34; --accent: #8fae92; --sel-bg: #333a33;
     --carry-ink: #e0a370; --carry-bg: #3d3227; --slot-bg: #2e3a3a;
     --hover-bg: #31352f; --row-line: #34322b; --chip-ink: #22211d; --sun: #d98079;
+    --slot-c1: #29323d; --slot-c2: #2c352b; --slot-c3: #3c342a; --slot-c4: #342e3b;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -208,6 +218,15 @@
     background: var(--slot-bg); border-left: 4px solid var(--c5);
   }
   .slot-block.done-block { opacity: .55; }
+  .slot-block.cat-c1 { background: var(--slot-c1); border-left-color: var(--c1); }
+  .slot-block.cat-c2 { background: var(--slot-c2); border-left-color: var(--c2); }
+  .slot-block.cat-c3 { background: var(--slot-c3); border-left-color: var(--c3); }
+  .slot-block.cat-c4 { background: var(--slot-c4); border-left-color: var(--c4); }
+  .balance { margin-bottom: 10px; }
+  .balance-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--line); }
+  .balance-bar span { height: 100%; }
+  .balance-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; font-size: 11px; color: var(--muted); }
+  .balance-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 3px; }
   .slot-block .name { flex: 1; word-break: break-all; }
   .slot-block .name.done { text-decoration: line-through; }
   .slot-block .chk { width: 19px; height: 19px; font-size: 11px; border-radius: 6px; }
@@ -613,6 +632,40 @@
   }
 
   /* ── 렌더: 일정표 (15분 단위) ─────────── */
+  function matchTodoCat(name) {
+    var todos = day(selectedDate).todos;
+    for (var i = 0; i < todos.length; i++) {
+      if (todos[i].title === name) return todos[i].cat;
+    }
+    return null;
+  }
+  function fmtDur(min) {
+    var h = Math.floor(min / 60), m = min % 60;
+    return (h ? h + '시간' : '') + (h && m ? ' ' : '') + (m || !h ? m + '분' : '');
+  }
+  function balanceHTML(slots) {
+    var counts = {};
+    var total = 0;
+    Object.keys(slots).forEach(function (k) {
+      var c = slots[k].cat && CATS[slots[k].cat] ? slots[k].cat : 'etc';
+      counts[c] = (counts[c] || 0) + 1;
+      total++;
+    });
+    if (!total) return '';
+    var order = CAT_KEYS.concat(['etc']);
+    var colorOf = function (c) { return c === 'etc' ? 'var(--c5)' : 'var(--' + c + ')'; };
+    var nameOf = function (c) { return c === 'etc' ? '기타' : CATS[c].name; };
+    var bar = '', legend = '';
+    order.forEach(function (c) {
+      if (!counts[c]) return;
+      var pct = counts[c] / total * 100;
+      bar += '<span style="width:' + pct.toFixed(1) + '%;background:' + colorOf(c) + '"></span>';
+      legend += '<span><i class="dot" style="background:' + colorOf(c) + '"></i>' +
+        nameOf(c) + ' ' + fmtDur(counts[c] * STEP) + ' (' + Math.round(pct) + '%)</span>';
+    });
+    return '<div class="balance"><div class="balance-bar">' + bar + '</div>' +
+      '<div class="balance-legend">' + legend + '</div></div>';
+  }
   function renderSchedule() {
     var panel = document.getElementById('panel');
     var d = day(selectedDate);
@@ -629,17 +682,26 @@
     }).join('');
 
     var dl = day(selectedDate).todos.filter(function (t) { return !t.done; })
-      .map(function (t) { return '<option value="' + t.title.replace(/"/g, '&quot;') + '">'; }).join('');
+      .map(function (t) {
+        return '<option value="' + t.title.replace(/"/g, '&quot;') + '" label="' +
+          (CATS[t.cat] ? CATS[t.cat].name + ' · ' : '') + t.title.replace(/"/g, '&quot;') + '">';
+      }).join('');
+
+    var catOpts = '<option value="">카테고리 자동</option>' +
+      CAT_KEYS.map(function (k) { return '<option value="' + k + '">' + CATS[k].name + '</option>'; }).join('') +
+      '<option value="etc">기타</option>';
 
     panel.innerHTML =
       '<div class="sch-form">' +
       '  <input type="text" id="schName" list="schDl" placeholder="활동 (할 일에서 선택 가능)" maxlength="60">' +
       '  <datalist id="schDl">' + dl + '</datalist>' +
+      '  <select id="schCat" title="카테고리">' + catOpts + '</select>' +
       '  <select id="schStart">' + timeOpts + '</select>' +
       '  <select id="schDur">' + durOpts + '</select>' +
       '  <button id="schAdd">배치</button>' +
       '</div>' +
       '<div class="sch-progress">15분 블록 ' + doneN + ' / ' + keys.length + ' 실천 · 빈 칸을 눌러 시작 시간을 고를 수도 있어요</div>' +
+      balanceHTML(slots) +
       '<div class="timeline" id="timeline"></div>';
 
     var tl = document.getElementById('timeline');
@@ -651,7 +713,8 @@
         var s = slots[mm];
         if (s) {
           row.innerHTML = timeCell +
-            '<div class="slot-body"><div class="slot-block' + (s.done ? ' done-block' : '') + '">' +
+            '<div class="slot-body"><div class="slot-block' + (s.done ? ' done-block' : '') +
+            (s.cat && CATS[s.cat] ? ' cat-' + s.cat : '') + '">' +
             '<button class="chk' + (s.done ? ' on' : '') + '">' + (s.done ? '✓' : '') + '</button>' +
             '<span class="name' + (s.done ? ' done' : '') + '"></span>' +
             '<button class="icon-btn del" title="이 활동 삭제">✕</button>' +
@@ -692,9 +755,11 @@
       for (var m2 = start; m2 < start + dur; m2 += STEP) {
         if (slots[m2]) { toast(minToHM(m2) + ' 칸이 이미 차 있어요'); return; }
       }
+      var selCat = document.getElementById('schCat').value;
+      var cat = selCat && selCat !== 'etc' ? selCat : (selCat === 'etc' ? null : matchTodoCat(name));
       var g = uid();
       for (var m3 = start; m3 < start + dur; m3 += STEP) {
-        slots[m3] = { name: name, done: false, group: g };
+        slots[m3] = { name: name, done: false, group: g, cat: cat };
       }
       save(); renderAll();
     });
