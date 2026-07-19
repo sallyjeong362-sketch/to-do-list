@@ -34,4 +34,4 @@
 open index.html
 ```
 
-GitHub Pages를 활성화하면 (Settings → Pages → main 브랜치) 웹 주소로도 접속할 수 있습니다.
+웹에서는 https://sallyjeong362-sketch.github.io/to-do-list/ 로 바로 접속할 수 있습니다. `main` 브랜치에 변경이 반영되면 자동으로 재배포됩니다.
