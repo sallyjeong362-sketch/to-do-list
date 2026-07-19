@@ -229,7 +229,12 @@
   .balance-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 3px; }
   .slot-block .name { flex: 1; word-break: break-all; }
   .slot-block .name.done { text-decoration: line-through; }
-  .slot-block .chk { width: 19px; height: 19px; font-size: 11px; border-radius: 6px; }
+  .slot-block .note { font-size: 11px; color: var(--muted); max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
+  .slot-block .chk { width: 19px; height: 19px; font-size: 11px; border-radius: 6px; touch-action: none; }
+  .slot-input {
+    flex: 1; padding: 4px 8px; font-size: 13px; font-family: inherit;
+    border: 1px solid var(--c5); border-radius: 8px; background: var(--bg); color: var(--ink);
+  }
 
   /* ── 오늘 요약 ────────────────────────── */
   .day-summary {
@@ -651,6 +656,58 @@
     });
   }
 
+  /* ── 일정표 드래그 다중 체크 ──────────── */
+  var slotDrag = null;
+  var slotDragEndAt = 0;
+  function applyDragTo(min) {
+    if (!slotDrag) return;
+    var slots = day(selectedDate).slots;
+    var sl = slots[min];
+    if (!sl || sl.done === slotDrag.target) return;
+    sl.done = slotDrag.target;
+    slotDrag.changed.push(min);
+    var row = document.querySelector('.slot-row[data-min="' + min + '"]');
+    if (row) {
+      var block = row.querySelector('.slot-block');
+      var chk = row.querySelector('.chk');
+      var nameEl = row.querySelector('.name');
+      if (block) block.classList.toggle('done-block', sl.done);
+      if (chk) { chk.classList.toggle('on', sl.done); chk.textContent = sl.done ? '✓' : ''; }
+      if (nameEl) nameEl.classList.toggle('done', sl.done);
+    }
+  }
+  function onSlotDragMove(e) {
+    var el = document.elementFromPoint(e.clientX, e.clientY);
+    var row = el && el.closest ? el.closest('.slot-row[data-min]') : null;
+    if (row) applyDragTo(+row.getAttribute('data-min'));
+  }
+  function endSlotDrag() {
+    document.removeEventListener('pointermove', onSlotDragMove);
+    document.removeEventListener('pointerup', endSlotDrag);
+    document.removeEventListener('pointercancel', endSlotDrag);
+    if (!slotDrag) return;
+    var n = slotDrag.changed.length;
+    var target = slotDrag.target;
+    slotDrag = null;
+    slotDragEndAt = Date.now();
+    if (n) {
+      addPoints(target ? n * POINT_SLOT : -n * POINT_SLOT, null);
+      toast(target ? '15분 블록 ' + n + '개 완료! +' + (n * POINT_SLOT) + 'P'
+                   : '15분 블록 ' + n + '개 체크 해제');
+      save();
+    }
+    renderAll();
+  }
+  function startSlotDrag(min) {
+    var sl = day(selectedDate).slots[min];
+    if (!sl || slotDrag) return;
+    slotDrag = { target: !sl.done, changed: [] };
+    applyDragTo(min);
+    document.addEventListener('pointermove', onSlotDragMove);
+    document.addEventListener('pointerup', endSlotDrag);
+    document.addEventListener('pointercancel', endSlotDrag);
+  }
+
   /* ── 렌더: 일정표 (15분 단위) ─────────── */
   function matchTodoCat(name) {
     var todos = day(selectedDate).todos;
@@ -720,7 +777,7 @@
       '  <select id="schDur">' + durOpts + '</select>' +
       '  <button id="schAdd">배치</button>' +
       '</div>' +
-      '<div class="sch-progress">15분 블록 ' + doneN + ' / ' + keys.length + ' 실천 · 빈 칸을 눌러 시작 시간을 고를 수도 있어요</div>' +
+      '<div class="sch-progress">15분 블록 ' + doneN + ' / ' + keys.length + ' 실천 · 빈 칸을 누르면 세부 계획을 바로 적을 수 있어요 · ✓를 누른 채 드래그하면 여러 칸 한 번에 체크/해제</div>' +
       balanceHTML(slots) +
       '<div class="timeline" id="timeline"></div>';
 
@@ -729,6 +786,7 @@
       (function (mm) {
         var row = document.createElement('div');
         row.className = 'slot-row' + (mm % 60 === 0 ? ' hour-start' : '');
+        row.setAttribute('data-min', mm);
         var timeCell = '<div class="slot-time">' + (mm % 60 === 0 ? minToHM(mm) : '') + '</div>';
         var s = slots[mm];
         if (s) {
@@ -737,12 +795,28 @@
             (s.cat && CATS[s.cat] ? ' cat-' + s.cat : '') + '">' +
             '<button class="chk' + (s.done ? ' on' : '') + '">' + (s.done ? '✓' : '') + '</button>' +
             '<span class="name' + (s.done ? ' done' : '') + '"></span>' +
+            (s.note ? '<span class="note"></span>' : '') +
+            '<button class="icon-btn edit" title="이 칸의 세부 계획">✎</button>' +
             '<button class="icon-btn del" title="이 활동 삭제">✕</button>' +
             '</div></div>';
           row.querySelector('.name').textContent = s.name;
-          row.querySelector('.chk').addEventListener('click', function () {
+          if (s.note) row.querySelector('.note').textContent = s.note;
+          var chk = row.querySelector('.chk');
+          chk.addEventListener('pointerdown', function (e) {
+            e.preventDefault();
+            startSlotDrag(mm);
+          });
+          chk.addEventListener('click', function () {
+            if (Date.now() - slotDragEndAt < 400) return;
             s.done = !s.done;
             addPoints(s.done ? POINT_SLOT : -POINT_SLOT, s.done ? '15분 실천!' : null);
+            save(); renderAll();
+          });
+          row.querySelector('.edit').addEventListener('click', function () {
+            var v = prompt(minToHM(mm) + ' 칸의 세부 계획', s.note || '');
+            if (v === null) return;
+            v = v.trim();
+            if (v) s.note = v; else delete s.note;
             save(); renderAll();
           });
           row.querySelector('.del').addEventListener('click', function () {
@@ -758,8 +832,27 @@
         } else {
           row.innerHTML = timeCell + '<div class="slot-body clickable"></div>';
           row.querySelector('.slot-body').addEventListener('click', function () {
-            document.getElementById('schStart').value = mm;
-            document.getElementById('schName').focus();
+            if (this.querySelector('input')) return;
+            this.classList.remove('clickable');
+            this.innerHTML = '<input class="slot-input" maxlength="60" placeholder="' + minToHM(mm) + ' 세부 계획 입력 후 Enter">';
+            var inp = this.querySelector('input');
+            inp.focus();
+            var committed = false;
+            var commit = function () {
+              if (committed) return;
+              committed = true;
+              var v = inp.value.trim();
+              if (v) {
+                slots[mm] = { name: v, done: false, group: uid(), cat: matchTodoCat(v) };
+                save();
+              }
+              renderAll();
+            };
+            inp.addEventListener('keydown', function (e) {
+              if (e.key === 'Enter') commit();
+              if (e.key === 'Escape') { committed = true; renderAll(); }
+            });
+            inp.addEventListener('blur', commit);
           });
         }
         tl.appendChild(row);
