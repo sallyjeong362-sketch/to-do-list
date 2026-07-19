@@ -17,6 +17,44 @@
     --c3: #d99a4e; /* 수업자료 */
     --c4: #9b7cb8; /* 자기계발 */
     --c5: #4fa3a5; /* 일정표 */
+    --sel-bg: #eef3ee;
+    --carry-ink: #b5651d;
+    --carry-bg: #faeede;
+    --slot-bg: #e8f2f2;
+    --hover-bg: #f4f7f4;
+    --row-line: #f0ede6;
+    --chip-ink: #ffffff;
+    --sun: #c0564f;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #22211d;
+      --card: #2c2b26;
+      --ink: #e8e5dc;
+      --muted: #9a968b;
+      --line: #3e3c34;
+      --accent: #8fae92;
+      --sel-bg: #333a33;
+      --carry-ink: #e0a370;
+      --carry-bg: #3d3227;
+      --slot-bg: #2e3a3a;
+      --hover-bg: #31352f;
+      --row-line: #34322b;
+      --chip-ink: #22211d;
+      --sun: #d98079;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f4ef; --card: #ffffff; --ink: #3b3a36; --muted: #8b8880;
+    --line: #e7e3da; --accent: #6b8e6f; --sel-bg: #eef3ee;
+    --carry-ink: #b5651d; --carry-bg: #faeede; --slot-bg: #e8f2f2;
+    --hover-bg: #f4f7f4; --row-line: #f0ede6; --chip-ink: #ffffff; --sun: #c0564f;
+  }
+  :root[data-theme="dark"] {
+    --bg: #22211d; --card: #2c2b26; --ink: #e8e5dc; --muted: #9a968b;
+    --line: #3e3c34; --accent: #8fae92; --sel-bg: #333a33;
+    --carry-ink: #e0a370; --carry-bg: #3d3227; --slot-bg: #2e3a3a;
+    --hover-bg: #31352f; --row-line: #34322b; --chip-ink: #22211d; --sun: #d98079;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -26,6 +64,7 @@
   }
   h1 { font-size: 20px; }
   button { font-family: inherit; cursor: pointer; }
+  input, select { color: var(--ink); color-scheme: light dark; }
 
   /* ── 헤더/보상 ─────────────────────────── */
   header.top {
@@ -55,13 +94,13 @@
   .cal-head b { font-size: 15px; }
   .cal-head button {
     border: 1px solid var(--line); background: none; border-radius: 8px;
-    width: 30px; height: 30px; font-size: 14px;
+    width: 30px; height: 30px; font-size: 14px; color: var(--ink);
   }
   .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
   .cal-dow { text-align: center; font-size: 11px; color: var(--muted); padding: 2px 0; }
   .cal-cell {
     border: 1px solid transparent; border-radius: 8px; background: none;
-    min-height: 46px; padding: 3px 0 1px; font-size: 12px;
+    min-height: 46px; padding: 3px 0 1px; font-size: 12px; color: var(--ink);
     display: flex; flex-direction: column; align-items: center; gap: 1px;
   }
   .cal-cell:not(:disabled):hover { border-color: var(--line); }
@@ -69,11 +108,11 @@
   .cal-cell .badge { font-size: 13px; line-height: 1; }
   .cal-cell .pct { font-size: 9px; color: var(--muted); }
   .cal-cell.today .d {
-    background: var(--ink); color: #fff; border-radius: 50%;
+    background: var(--ink); color: var(--card); border-radius: 50%;
     width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center;
   }
-  .cal-cell.selected { border-color: var(--accent); background: #eef3ee; }
-  .cal-cell.sun .d { color: #c0564f; } .cal-cell.today.sun .d { color:#fff; }
+  .cal-cell.selected { border-color: var(--accent); background: var(--sel-bg); }
+  .cal-cell.sun .d { color: var(--sun); } .cal-cell.today.sun .d { color: var(--card); }
 
   /* ── 날짜 표시줄 ──────────────────────── */
   .datebar {
@@ -84,7 +123,7 @@
   .datebar .sub { font-size: 12px; color: var(--muted); }
   .datebar button {
     border: 1px solid var(--line); background: var(--card);
-    border-radius: 8px; padding: 5px 10px; font-size: 12px;
+    border-radius: 8px; padding: 5px 10px; font-size: 12px; color: var(--ink);
   }
 
   /* ── 탭 ──────────────────────────────── */
@@ -109,7 +148,7 @@
   }
   .add-row button.add {
     padding: 9px 16px; border: none; border-radius: 10px; background: var(--ink);
-    color: #fff; font-size: 14px;
+    color: var(--card); font-size: 14px;
   }
   ul.todos { list-style: none; }
   ul.todos li {
@@ -119,13 +158,13 @@
   ul.todos li:last-child { border-bottom: none; }
   .chk {
     width: 22px; height: 22px; flex: none; border-radius: 7px;
-    border: 2px solid var(--line); background: none; font-size: 13px; color: #fff;
+    border: 2px solid var(--line); background: none; font-size: 13px; color: var(--chip-ink);
   }
   .chk.on { border-color: var(--accent); background: var(--accent); }
   .t-title { flex: 1; font-size: 14px; word-break: break-all; }
   .t-title.done { text-decoration: line-through; color: var(--muted); }
   .tag-carry {
-    font-size: 10px; color: #b5651d; background: #faeede;
+    font-size: 10px; color: var(--carry-ink); background: var(--carry-bg);
     border-radius: 6px; padding: 2px 6px; flex: none;
   }
   .icon-btn {
@@ -154,7 +193,7 @@
   }
   .sch-progress { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
   .timeline { border-top: 1px solid var(--line); }
-  .slot-row { display: flex; align-items: stretch; min-height: 26px; border-bottom: 1px solid #f0ede6; }
+  .slot-row { display: flex; align-items: stretch; min-height: 26px; border-bottom: 1px solid var(--row-line); }
   .slot-row.hour-start { border-top: 1px solid var(--line); }
   .slot-time {
     width: 48px; flex: none; font-size: 10px; color: var(--muted);
@@ -162,11 +201,11 @@
   }
   .slot-body { flex: 1; padding: 2px 0 2px 8px; display: flex; align-items: center; }
   .slot-body.clickable { cursor: pointer; }
-  .slot-body.clickable:hover { background: #f4f7f4; }
+  .slot-body.clickable:hover { background: var(--hover-bg); }
   .slot-block {
     flex: 1; display: flex; align-items: center; gap: 8px;
     border-radius: 8px; padding: 3px 8px; font-size: 13px;
-    background: #e8f2f2; border-left: 4px solid var(--c5);
+    background: var(--slot-bg); border-left: 4px solid var(--c5);
   }
   .slot-block.done-block { opacity: .55; }
   .slot-block .name { flex: 1; word-break: break-all; }
@@ -182,7 +221,7 @@
   .day-summary .big { font-size: 26px; }
   .toast {
     position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
-    background: var(--ink); color: #fff; font-size: 13px;
+    background: var(--ink); color: var(--card); font-size: 13px;
     padding: 10px 18px; border-radius: 20px; opacity: 0; transition: opacity .3s;
     pointer-events: none; z-index: 10; max-width: 90%;
   }
