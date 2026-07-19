@@ -226,16 +226,61 @@
     pointer-events: none; z-index: 10; max-width: 90%;
   }
   .toast.show { opacity: .95; }
+
+  /* ── 동기화 ───────────────────────────── */
+  .sync-chip {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 1px solid var(--line); background: var(--card);
+    font-size: 15px; color: var(--muted); position: relative;
+  }
+  .sync-chip.ok { color: var(--accent); border-color: var(--accent); }
+  .sync-chip.syncing { color: var(--c1); }
+  .sync-chip.error { color: var(--sun); border-color: var(--sun); }
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,.45);
+    display: none; align-items: center; justify-content: center; z-index: 20; padding: 16px;
+  }
+  .modal-backdrop.show { display: flex; }
+  .modal {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    max-width: 420px; width: 100%; padding: 18px; font-size: 14px;
+    max-height: 85vh; overflow-y: auto;
+  }
+  .modal h2 { font-size: 16px; margin-bottom: 10px; }
+  .modal p.desc { color: var(--muted); font-size: 12px; line-height: 1.6; margin-bottom: 12px; }
+  .modal .btn {
+    display: block; width: 100%; padding: 10px; margin-top: 8px;
+    border: none; border-radius: 10px; font-size: 14px; font-weight: 600;
+    background: var(--accent); color: #fff;
+  }
+  .modal .btn.secondary { background: none; border: 1px solid var(--line); color: var(--ink); font-weight: 400; }
+  .modal .btn.danger { background: none; border: 1px solid var(--sun); color: var(--sun); font-weight: 400; }
+  .modal input.code-input {
+    width: 100%; padding: 10px; margin-top: 8px;
+    border: 1px solid var(--line); border-radius: 10px; background: var(--bg);
+    font-size: 13px; font-family: inherit;
+  }
+  .modal .code-box {
+    background: var(--bg); border: 1px dashed var(--line); border-radius: 10px;
+    padding: 10px; font-size: 12px; word-break: break-all; margin: 8px 0;
+    font-family: ui-monospace, monospace;
+  }
+  .modal .sync-meta { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .modal .close-row { text-align: right; margin-top: 12px; }
+  .modal .close-row button { border: none; background: none; color: var(--muted); font-size: 13px; }
 </style>
 </head>
 <body>
 
 <header class="top">
   <h1>🗓 나의 투두 트래커</h1>
-  <div class="reward-chip">
-    <span id="levelEmoji">🌱</span>
-    <span><b id="points">0</b>P</span>
-    <span>🔥 <b id="streak">0</b>일</span>
+  <div style="display:flex;gap:6px;align-items:center">
+    <button class="sync-chip" id="syncBtn" title="기기 간 동기화">☁</button>
+    <div class="reward-chip">
+      <span id="levelEmoji">🌱</span>
+      <span><b id="points">0</b>P</span>
+      <span>🔥 <b id="streak">0</b>일</span>
+    </div>
   </div>
 </header>
 
@@ -280,6 +325,10 @@
 </div>
 
 <div class="toast" id="toast"></div>
+
+<div class="modal-backdrop" id="syncModal">
+  <div class="modal" id="syncModalBody"></div>
+</div>
 
 <script>
 (function () {
@@ -326,7 +375,13 @@
     } catch (e) {}
     return { days: {}, meta: { points: 0 } };
   }
-  function save() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+  function saveLocal() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
+  function save() {
+    if (!state.meta) state.meta = { points: 0 };
+    state.meta.updatedAt = Date.now();
+    saveLocal();
+    schedulePush();
+  }
   function day(key) {
     if (!state.days[key]) state.days[key] = { todos: [], slots: {} };
     if (!state.days[key].slots) state.days[key].slots = {};
@@ -701,9 +756,192 @@
     }
   }, 60 * 1000);
 
+  /* ── 기기 간 동기화 (로그인 불필요) ────── */
+  var SYNC_API = 'https://jsonblob.com/api/jsonBlob';
+  var SYNC_KEY = 'todoTracker.sync';
+  var sync = (function () {
+    try { var s = JSON.parse(localStorage.getItem(SYNC_KEY)); if (s && typeof s === 'object') return s; } catch (e) {}
+    return { id: null, lastSyncAt: null };
+  })();
+  var pushTimer = null;
+
+  function saveSync() { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); }
+  function setSyncUI(st) {
+    var btn = document.getElementById('syncBtn');
+    btn.className = 'sync-chip' + (sync.id ? ' ' + st : '');
+    btn.textContent = !sync.id ? '☁' : (st === 'syncing' ? '⟳' : (st === 'error' ? '☁!' : '☁'));
+    btn.title = !sync.id ? '기기 간 동기화 설정'
+      : (st === 'error' ? '동기화 오류 — 눌러서 확인' : '동기화 ' + (st === 'syncing' ? '중…' : '연결됨'));
+  }
+  function markSynced() { sync.lastSyncAt = Date.now(); saveSync(); setSyncUI('ok'); }
+
+  function schedulePush() {
+    if (!sync.id) return;
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(pushNow, 1500);
+  }
+  function pushNow() {
+    if (!sync.id) return Promise.resolve();
+    setSyncUI('syncing');
+    return fetch(SYNC_API + '/' + encodeURIComponent(sync.id), {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state)
+    }).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      markSynced();
+    }).catch(function () { setSyncUI('error'); });
+  }
+  function adoptRemote(remote) {
+    state = remote;
+    if (!state.meta) state.meta = { points: 0 };
+    if (!state.days) state.days = {};
+    saveLocal();
+    carryOver();
+    renderAll();
+  }
+  function pullNow() {
+    if (!sync.id) return Promise.resolve();
+    setSyncUI('syncing');
+    return fetch(SYNC_API + '/' + encodeURIComponent(sync.id)).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    }).then(function (remote) {
+      var rU = (remote && remote.meta && remote.meta.updatedAt) || 0;
+      var lU = (state.meta && state.meta.updatedAt) || 0;
+      if (remote && remote.days && rU > lU) adoptRemote(remote);
+      markSynced();
+    }).catch(function () { setSyncUI('error'); });
+  }
+  function createRoom() {
+    setSyncUI('syncing');
+    state.meta.updatedAt = Date.now();
+    saveLocal();
+    return fetch(SYNC_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state)
+    }).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      var loc = r.headers.get('Location') || r.headers.get('location') || '';
+      var id = loc.split('/').pop();
+      if (!id) throw new Error('no id');
+      sync.id = id;
+      markSynced();
+      renderSyncModal();
+      toast('동기화 코드가 만들어졌어요 ☁');
+    }).catch(function () {
+      setSyncUI('error');
+      alert('동기화 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.');
+    });
+  }
+  function connectRoom(id) {
+    id = (id || '').trim().split('/').pop();
+    if (!id) return Promise.resolve();
+    setSyncUI('syncing');
+    return fetch(SYNC_API + '/' + encodeURIComponent(id)).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    }).then(function (remote) {
+      sync.id = id;
+      var rU = (remote && remote.meta && remote.meta.updatedAt) || 0;
+      var lU = (state.meta && state.meta.updatedAt) || 0;
+      var localHasData = Object.keys(state.days).length > 0;
+      if (remote && remote.days && (!localHasData || rU >= lU)) {
+        adoptRemote(remote);
+        markSynced();
+      } else {
+        pushNow();
+      }
+      renderSyncModal();
+      toast('동기화가 연결됐어요 ☁');
+    }).catch(function () {
+      setSyncUI('error');
+      alert('해당 코드를 찾을 수 없어요. 코드를 다시 확인해 주세요.');
+    });
+  }
+  function disconnectRoom() {
+    if (!confirm('동기화 연결을 해제할까요?\n(이 기기의 데이터는 그대로 남고, 다른 기기와의 연동만 끊어져요)')) return;
+    sync.id = null; sync.lastSyncAt = null;
+    saveSync(); setSyncUI('off'); renderSyncModal();
+  }
+  function copyText(text, label) {
+    var done = function () { toast(label + ' 복사 완료!'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { prompt('직접 복사해 주세요:', text); });
+    } else { prompt('직접 복사해 주세요:', text); }
+  }
+  function syncLink() {
+    return location.origin + location.pathname + '?sync=' + encodeURIComponent(sync.id);
+  }
+  function fmtTime(ts) {
+    if (!ts) return '-';
+    var d = new Date(ts);
+    return (d.getMonth() + 1) + '/' + d.getDate() + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function renderSyncModal() {
+    var body = document.getElementById('syncModalBody');
+    if (!sync.id) {
+      body.innerHTML =
+        '<h2>☁ 기기 간 동기화</h2>' +
+        '<p class="desc">로그인 없이 PC와 모바일에서 같은 데이터를 쓸 수 있어요.<br>' +
+        '한 기기에서 <b>동기화 코드</b>를 만들고, 다른 기기에서 그 코드(또는 링크)로 연결하면 됩니다.<br>' +
+        '⚠️ 코드를 아는 사람은 누구나 데이터를 보거나 수정할 수 있으니 비밀번호처럼 다뤄 주세요.</p>' +
+        '<button class="btn" id="syncCreate">새 동기화 코드 만들기</button>' +
+        '<input class="code-input" id="syncCodeInput" placeholder="다른 기기에서 만든 코드 붙여넣기">' +
+        '<button class="btn secondary" id="syncConnect">코드로 연결하기</button>' +
+        '<div class="close-row"><button id="syncClose">닫기</button></div>';
+      document.getElementById('syncCreate').addEventListener('click', createRoom);
+      document.getElementById('syncConnect').addEventListener('click', function () {
+        connectRoom(document.getElementById('syncCodeInput').value);
+      });
+    } else {
+      body.innerHTML =
+        '<h2>☁ 동기화 연결됨</h2>' +
+        '<p class="desc">아래 링크를 다른 기기(모바일 등)에서 열면 바로 연동됩니다.<br>' +
+        '메모장·메신저 "나에게 보내기"로 링크를 전달하면 편해요.</p>' +
+        '<div class="code-box" id="syncLinkBox"></div>' +
+        '<button class="btn" id="syncCopyLink">🔗 연동 링크 복사</button>' +
+        '<button class="btn secondary" id="syncCopyCode">코드만 복사</button>' +
+        '<button class="btn secondary" id="syncNow">지금 동기화</button>' +
+        '<button class="btn danger" id="syncOff">연결 해제</button>' +
+        '<div class="sync-meta">마지막 동기화: ' + fmtTime(sync.lastSyncAt) + '</div>' +
+        '<div class="close-row"><button id="syncClose">닫기</button></div>';
+      document.getElementById('syncLinkBox').textContent = syncLink();
+      document.getElementById('syncCopyLink').addEventListener('click', function () { copyText(syncLink(), '연동 링크'); });
+      document.getElementById('syncCopyCode').addEventListener('click', function () { copyText(sync.id, '코드'); });
+      document.getElementById('syncNow').addEventListener('click', function () {
+        pullNow().then(pushNow).then(renderSyncModal);
+      });
+      document.getElementById('syncOff').addEventListener('click', disconnectRoom);
+    }
+    document.getElementById('syncClose').addEventListener('click', closeSyncModal);
+  }
+  function openSyncModal() { renderSyncModal(); document.getElementById('syncModal').classList.add('show'); }
+  function closeSyncModal() { document.getElementById('syncModal').classList.remove('show'); }
+
+  document.getElementById('syncBtn').addEventListener('click', openSyncModal);
+  document.getElementById('syncModal').addEventListener('click', function (e) {
+    if (e.target === this) closeSyncModal();
+  });
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') pullNow();
+  });
+  setInterval(pullNow, 60 * 1000);
+
   /* ── 시작 ─────────────────────────────── */
   carryOver();
   renderAll();
+  setSyncUI('ok');
+  (function () {
+    var m = location.search.match(/[?&]sync=([^&]+)/);
+    var linkId = m ? decodeURIComponent(m[1]) : null;
+    if (linkId && history.replaceState) {
+      history.replaceState(null, '', location.pathname);
+    }
+    if (linkId && linkId !== sync.id) connectRoom(linkId);
+    else if (sync.id) pullNow();
+  })();
 })();
 </script>
 </body>
