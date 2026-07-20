@@ -227,10 +227,22 @@
   .balance-bar span { height: 100%; }
   .balance-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; font-size: 11px; color: var(--muted); }
   .balance-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 3px; }
-  .slot-block .name { flex: 1; word-break: break-all; }
   .slot-block .name.done { text-decoration: line-through; }
-  .slot-block .note { font-size: 11px; color: var(--muted); max-width: 42%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: none; }
+  .slot-block .name { flex: 0 1 auto; max-width: 48%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .slot-block .note-input {
+    flex: 1; min-width: 40px; border: none; background: transparent;
+    font-size: 11px; color: var(--muted); font-family: inherit;
+    border-bottom: 1px dashed transparent; padding: 2px 0 2px 4px;
+  }
+  .slot-block .note-input:focus { outline: none; border-bottom-color: var(--c5); color: var(--ink); }
   .slot-block .chk { width: 19px; height: 19px; font-size: 11px; border-radius: 6px; touch-action: none; }
+  .fill-handle {
+    flex: none; width: 20px; height: 20px; border-radius: 6px;
+    border: 1px dashed var(--muted); color: var(--muted); font-size: 11px;
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: ns-resize; touch-action: none; background: var(--card); user-select: none;
+  }
+  .slot-body.fill-preview { background: var(--hover-bg); box-shadow: inset 4px 0 0 var(--c5); border-radius: 8px; }
   .slot-input {
     flex: 1; padding: 4px 8px; font-size: 13px; font-family: inherit;
     border: 1px solid var(--c5); border-radius: 8px; background: var(--bg); color: var(--ink);
@@ -708,6 +720,60 @@
     document.addEventListener('pointercancel', endSlotDrag);
   }
 
+  /* ── 일정표 채우기 드래그 (엑셀식 복제) ── */
+  var fillDrag = null;
+  function updateFillPreview(targetMin) {
+    if (!fillDrag) return;
+    var slots = day(selectedDate).slots;
+    var src = fillDrag.sourceMin;
+    var mins = [];
+    if (targetMin !== src) {
+      var dir = targetMin > src ? STEP : -STEP;
+      for (var m = src + dir; (dir > 0 ? m <= targetMin : m >= targetMin); m += dir) {
+        if (m < SLOT_START || m >= SLOT_END || slots[m]) break;
+        mins.push(m);
+      }
+    }
+    fillDrag.mins = mins;
+    var prev = document.querySelectorAll('.slot-body.fill-preview');
+    for (var i = 0; i < prev.length; i++) prev[i].classList.remove('fill-preview');
+    mins.forEach(function (mm) {
+      var body = document.querySelector('.slot-row[data-min="' + mm + '"] .slot-body');
+      if (body) body.classList.add('fill-preview');
+    });
+  }
+  function onFillMove(e) {
+    var el = document.elementFromPoint(e.clientX, e.clientY);
+    var row = el && el.closest ? el.closest('.slot-row[data-min]') : null;
+    if (row) updateFillPreview(+row.getAttribute('data-min'));
+  }
+  function endFillDrag() {
+    document.removeEventListener('pointermove', onFillMove);
+    document.removeEventListener('pointerup', endFillDrag);
+    document.removeEventListener('pointercancel', endFillDrag);
+    if (!fillDrag) return;
+    var mins = fillDrag.mins || [];
+    var slots = day(selectedDate).slots;
+    var src = slots[fillDrag.sourceMin];
+    fillDrag = null;
+    if (mins.length && src) {
+      mins.forEach(function (m) {
+        slots[m] = { name: src.name, done: false, group: src.group, cat: src.cat || null };
+      });
+      save();
+      toast('「' + src.name + '」 ' + mins.length + '칸 채움 (+' + fmtDur(mins.length * STEP) + ')');
+    }
+    renderAll();
+  }
+  function startFillDrag(min) {
+    if (fillDrag || slotDrag) return;
+    if (!day(selectedDate).slots[min]) return;
+    fillDrag = { sourceMin: min, mins: [] };
+    document.addEventListener('pointermove', onFillMove);
+    document.addEventListener('pointerup', endFillDrag);
+    document.addEventListener('pointercancel', endFillDrag);
+  }
+
   /* ── 렌더: 일정표 (15분 단위) ─────────── */
   function matchTodoCat(name) {
     var todos = day(selectedDate).todos;
@@ -777,7 +843,7 @@
       '  <select id="schDur">' + durOpts + '</select>' +
       '  <button id="schAdd">배치</button>' +
       '</div>' +
-      '<div class="sch-progress">15분 블록 ' + doneN + ' / ' + keys.length + ' 실천 · 빈 칸을 누르면 세부 계획을 바로 적을 수 있어요 · ✓를 누른 채 드래그하면 여러 칸 한 번에 체크/해제</div>' +
+      '<div class="sch-progress">15분 블록 ' + doneN + ' / ' + keys.length + ' 실천 · 빈 칸 클릭=바로 입력 · ✓ 누른 채 드래그=여러 칸 체크/해제 · ⇕ 드래그=같은 활동으로 아래 칸 채우기(엑셀식)</div>' +
       balanceHTML(slots) +
       '<div class="timeline" id="timeline"></div>';
 
@@ -795,12 +861,27 @@
             (s.cat && CATS[s.cat] ? ' cat-' + s.cat : '') + '">' +
             '<button class="chk' + (s.done ? ' on' : '') + '">' + (s.done ? '✓' : '') + '</button>' +
             '<span class="name' + (s.done ? ' done' : '') + '"></span>' +
-            (s.note ? '<span class="note"></span>' : '') +
-            '<button class="icon-btn edit" title="이 칸의 세부 계획">✎</button>' +
+            '<input class="note-input" maxlength="60" placeholder="세부 작업 메모">' +
+            '<span class="fill-handle" title="드래그해서 같은 활동으로 칸 채우기">⇕</span>' +
             '<button class="icon-btn del" title="이 활동 삭제">✕</button>' +
             '</div></div>';
           row.querySelector('.name').textContent = s.name;
-          if (s.note) row.querySelector('.note').textContent = s.note;
+          var noteInp = row.querySelector('.note-input');
+          noteInp.value = s.note || '';
+          noteInp.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') this.blur();
+            e.stopPropagation();
+          });
+          noteInp.addEventListener('blur', function () {
+            var v = this.value.trim();
+            if ((s.note || '') === v) return;
+            if (v) s.note = v; else delete s.note;
+            save();
+          });
+          row.querySelector('.fill-handle').addEventListener('pointerdown', function (e) {
+            e.preventDefault();
+            startFillDrag(mm);
+          });
           var chk = row.querySelector('.chk');
           chk.addEventListener('pointerdown', function (e) {
             e.preventDefault();
@@ -810,13 +891,6 @@
             if (Date.now() - slotDragEndAt < 400) return;
             s.done = !s.done;
             addPoints(s.done ? POINT_SLOT : -POINT_SLOT, s.done ? '15분 실천!' : null);
-            save(); renderAll();
-          });
-          row.querySelector('.edit').addEventListener('click', function () {
-            var v = prompt(minToHM(mm) + ' 칸의 세부 계획', s.note || '');
-            if (v === null) return;
-            v = v.trim();
-            if (v) s.note = v; else delete s.note;
             save(); renderAll();
           });
           row.querySelector('.del').addEventListener('click', function () {
