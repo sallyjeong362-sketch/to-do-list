@@ -442,8 +442,8 @@
     var d = state.days[key];
     var total = 0, done = 0;
     if (d) {
-      (d.todos || []).forEach(function (t) { total++; if (t.done) done++; });
-      Object.keys(d.slots || {}).forEach(function (m) { total++; if (d.slots[m].done) done++; });
+      (d.todos || []).forEach(function (t) { if (t.del) return; total++; if (t.done) done++; });
+      Object.keys(d.slots || {}).forEach(function (m) { if (d.slots[m].del) return; total++; if (d.slots[m].done) done++; });
     }
     return { total: total, done: done, rate: total ? done / total : 0 };
   }
@@ -488,11 +488,12 @@
     Object.keys(state.days).forEach(function (key) {
       if (key >= todayKey) return;
       (state.days[key].todos || []).forEach(function (t) {
-        if (!t.done && !t.carriedForward) {
+        if (!t.done && !t.carriedForward && !t.del) {
           t.carriedForward = true;
+          t.ts = Date.now();
           day(todayKey).todos.push({
             id: uid(), cat: t.cat, title: t.title,
-            done: false, carried: true, from: key
+            done: false, carried: true, from: key, ts: Date.now()
           });
           moved++;
         }
@@ -592,8 +593,9 @@
     var changed = 0;
     Object.keys(slots).forEach(function (k) {
       var sl = slots[k];
-      if (sl.name === t.title && sl.done !== t.done) {
+      if (!sl.del && sl.name === t.title && sl.done !== t.done) {
         sl.done = t.done;
+        sl.ts = Date.now();
         addPoints(t.done ? POINT_SLOT : -POINT_SLOT);
         changed++;
       }
@@ -605,7 +607,7 @@
   function renderCatPanel(cat) {
     var panel = document.getElementById('panel');
     var d = day(selectedDate);
-    var todos = d.todos.filter(function (t) { return t.cat === cat; });
+    var todos = d.todos.filter(function (t) { return t.cat === cat && !t.del; });
     var doneN = todos.filter(function (t) { return t.done; }).length;
 
     panel.innerHTML =
@@ -632,6 +634,7 @@
         li.querySelector('.t-title').textContent = t.title;
         li.querySelector('.chk').addEventListener('click', function () {
           t.done = !t.done;
+          t.ts = Date.now();
           addPoints(t.done ? POINT_TODO : -POINT_TODO, null);
           var n = syncSlotsWithTodo(t);
           if (t.done) {
@@ -642,12 +645,13 @@
         });
         li.querySelector('.edit').addEventListener('click', function () {
           var v = prompt('할 일 수정', t.title);
-          if (v !== null && v.trim()) { t.title = v.trim(); save(); renderAll(); }
+          if (v !== null && v.trim()) { t.title = v.trim(); t.ts = Date.now(); save(); renderAll(); }
         });
         li.querySelector('.del').addEventListener('click', function () {
           if (!confirm('「' + t.title + '」 삭제할까요?')) return;
           if (t.done) addPoints(-POINT_TODO);
-          d.todos.splice(d.todos.indexOf(t), 1);
+          t.del = Date.now();
+          t.ts = Date.now();
           save(); renderAll();
         });
         list.appendChild(li);
@@ -658,7 +662,7 @@
       var inp = document.getElementById('newTodo');
       var v = inp.value.trim();
       if (!v) return;
-      d.todos.push({ id: uid(), cat: cat, title: v, done: false, carried: false });
+      d.todos.push({ id: uid(), cat: cat, title: v, done: false, carried: false, ts: Date.now() });
       save(); renderAll();
       var again = document.getElementById('newTodo');
       if (again) again.focus();
@@ -676,8 +680,9 @@
     if (!slotDrag) return;
     var slots = day(selectedDate).slots;
     var sl = slots[min];
-    if (!sl || sl.done === slotDrag.target) return;
+    if (!sl || sl.del || sl.done === slotDrag.target) return;
     sl.done = slotDrag.target;
+    sl.ts = Date.now();
     slotDrag.changed.push(min);
     var row = document.querySelector('.slot-row[data-min="' + min + '"]');
     if (row) {
@@ -713,7 +718,7 @@
   }
   function startSlotDrag(min) {
     var sl = day(selectedDate).slots[min];
-    if (!sl || slotDrag) return;
+    if (!sl || sl.del || slotDrag) return;
     slotDrag = { target: !sl.done, changed: [] };
     applyDragTo(min);
     document.addEventListener('pointermove', onSlotDragMove);
@@ -731,7 +736,7 @@
     if (targetMin !== src) {
       var dir = targetMin > src ? STEP : -STEP;
       for (var m = src + dir; (dir > 0 ? m <= targetMin : m >= targetMin); m += dir) {
-        if (m < SLOT_START || m >= SLOT_END || slots[m]) break;
+        if (m < SLOT_START || m >= SLOT_END || (slots[m] && !slots[m].del)) break;
         mins.push(m);
       }
     }
@@ -757,9 +762,9 @@
     var slots = day(selectedDate).slots;
     var src = slots[fillDrag.sourceMin];
     fillDrag = null;
-    if (mins.length && src) {
+    if (mins.length && src && !src.del) {
       mins.forEach(function (m) {
-        slots[m] = { name: src.name, done: false, group: src.group, cat: src.cat || null };
+        slots[m] = { name: src.name, done: false, group: src.group, cat: src.cat || null, ts: Date.now() };
       });
       save();
       toast('「' + src.name + '」 ' + mins.length + '칸 채움 (+' + fmtDur(mins.length * STEP) + ')');
@@ -768,7 +773,8 @@
   }
   function startFillDrag(min) {
     if (fillDrag || slotDrag) return;
-    if (!day(selectedDate).slots[min]) return;
+    var s0 = day(selectedDate).slots[min];
+    if (!s0 || s0.del) return;
     fillDrag = { sourceMin: min, mins: [] };
     document.addEventListener('pointermove', onFillMove);
     document.addEventListener('pointerup', endFillDrag);
@@ -779,7 +785,7 @@
   function matchTodoCat(name) {
     var todos = day(selectedDate).todos;
     for (var i = 0; i < todos.length; i++) {
-      if (todos[i].title === name) return todos[i].cat;
+      if (!todos[i].del && todos[i].title === name) return todos[i].cat;
     }
     return null;
   }
@@ -791,6 +797,7 @@
     var counts = {};
     var total = 0;
     Object.keys(slots).forEach(function (k) {
+      if (slots[k].del) return;
       var c = slots[k].cat && CATS[slots[k].cat] ? slots[k].cat : 'etc';
       counts[c] = (counts[c] || 0) + 1;
       total++;
@@ -814,7 +821,7 @@
     var panel = document.getElementById('panel');
     var d = day(selectedDate);
     var slots = d.slots;
-    var keys = Object.keys(slots);
+    var keys = Object.keys(slots).filter(function (k) { return !slots[k].del; });
     var doneN = keys.filter(function (k) { return slots[k].done; }).length;
 
     var timeOpts = '';
@@ -825,7 +832,7 @@
       return '<option value="' + n + '">' + n + '분</option>';
     }).join('');
 
-    var dl = day(selectedDate).todos.filter(function (t) { return !t.done; })
+    var dl = day(selectedDate).todos.filter(function (t) { return !t.done && !t.del; })
       .map(function (t) {
         return '<option value="' + t.title.replace(/"/g, '&quot;') + '" label="' +
           (CATS[t.cat] ? CATS[t.cat].name + ' · ' : '') + t.title.replace(/"/g, '&quot;') + '">';
@@ -856,7 +863,7 @@
         row.setAttribute('data-min', mm);
         var timeCell = '<div class="slot-time">' + (mm % 60 === 0 ? minToHM(mm) : '') + '</div>';
         var s = slots[mm];
-        if (s) {
+        if (s && !s.del) {
           row.innerHTML = timeCell +
             '<div class="slot-body"><div class="slot-block' + (s.done ? ' done-block' : '') +
             (s.cat && CATS[s.cat] ? ' cat-' + s.cat : '') + '">' +
@@ -877,6 +884,7 @@
             var v = this.value.trim();
             if ((s.note || '') === v) return;
             if (v) s.note = v; else delete s.note;
+            s.ts = Date.now();
             save();
           });
           row.querySelector('.fill-handle').addEventListener('pointerdown', function (e) {
@@ -891,6 +899,7 @@
           chk.addEventListener('click', function () {
             if (Date.now() - slotDragEndAt < 400) return;
             s.done = !s.done;
+            s.ts = Date.now();
             addPoints(s.done ? POINT_SLOT : -POINT_SLOT, s.done ? '15분 실천!' : null);
             save(); renderAll();
           });
@@ -900,7 +909,7 @@
             if (!confirm('「' + s.name + '」 (' + members.length * STEP + '분) 일정을 삭제할까요?')) return;
             members.forEach(function (k) {
               if (slots[k].done) addPoints(-POINT_SLOT);
-              delete slots[k];
+              slots[k] = { del: Date.now(), ts: Date.now() };
             });
             save(); renderAll();
           });
@@ -918,7 +927,7 @@
               committed = true;
               var v = inp.value.trim();
               if (v) {
-                slots[mm] = { name: v, done: false, group: uid(), cat: matchTodoCat(v) };
+                slots[mm] = { name: v, done: false, group: uid(), cat: matchTodoCat(v), ts: Date.now() };
                 save();
               }
               renderAll();
@@ -941,13 +950,13 @@
       var dur = +document.getElementById('schDur').value;
       if (start + dur > SLOT_END) { toast('24:00을 넘길 수 없어요'); return; }
       for (var m2 = start; m2 < start + dur; m2 += STEP) {
-        if (slots[m2]) { toast(minToHM(m2) + ' 칸이 이미 차 있어요'); return; }
+        if (slots[m2] && !slots[m2].del) { toast(minToHM(m2) + ' 칸이 이미 차 있어요'); return; }
       }
       var selCat = document.getElementById('schCat').value;
       var cat = selCat && selCat !== 'etc' ? selCat : (selCat === 'etc' ? null : matchTodoCat(name));
       var g = uid();
       for (var m3 = start; m3 < start + dur; m3 += STEP) {
-        slots[m3] = { name: name, done: false, group: g, cat: cat };
+        slots[m3] = { name: name, done: false, group: g, cat: cat, ts: Date.now() };
       }
       save(); renderAll();
     });
@@ -1060,20 +1069,40 @@
       var a = (newer.days || {})[dk], b = (older.days || {})[dk];
       if (!a || !b) { out.days[dk] = JSON.parse(JSON.stringify(a || b)); return; }
       var merged = { todos: [], slots: {} };
-      var seenId = {}, seenCarry = {};
+      var byId = {}, order = [], seenCarry = {};
       var carryKey = function (t) { return t.cat + '|' + t.title + '|' + (t.from || ''); };
       (a.todos || []).forEach(function (t) {
-        merged.todos.push(t); seenId[t.id] = 1;
-        if (t.carried) seenCarry[carryKey(t)] = 1;
+        byId[t.id] = t; order.push(t.id);
+        if (t.carried && !t.del) seenCarry[carryKey(t)] = 1;
       });
       (b.todos || []).forEach(function (t) {
-        if (seenId[t.id]) return;
-        if (t.carried && seenCarry[carryKey(t)]) return;
+        var prev = byId[t.id];
+        if (prev) {
+          // 같은 항목이 양쪽에 있으면 더 최근에 수정(삭제 포함)한 쪽을 채택
+          if ((t.ts || 0) > (prev.ts || 0)) byId[t.id] = t;
+          return;
+        }
+        if (t.carried && !t.del && seenCarry[carryKey(t)]) return;
+        byId[t.id] = t; order.push(t.id);
+        if (t.carried && !t.del) seenCarry[carryKey(t)] = 1;
+      });
+      var now = Date.now();
+      var GC_MS = 14 * 24 * 60 * 60 * 1000;
+      order.forEach(function (id) {
+        var t = byId[id];
+        if (t.del && now - t.del > GC_MS) return; // 오래된 삭제 표식 정리
         merged.todos.push(t);
       });
       var sa = a.slots || {}, sb = b.slots || {};
-      Object.keys(sb).forEach(function (m) { merged.slots[m] = sb[m]; });
-      Object.keys(sa).forEach(function (m) { merged.slots[m] = sa[m]; });
+      var mins = {};
+      Object.keys(sa).forEach(function (m) { mins[m] = 1; });
+      Object.keys(sb).forEach(function (m) { mins[m] = 1; });
+      Object.keys(mins).forEach(function (m) {
+        var va = sa[m], vb = sb[m];
+        var v = !va ? vb : (!vb ? va : (((vb.ts || 0) > (va.ts || 0)) ? vb : va));
+        if (v.del && now - v.del > GC_MS) return;
+        merged.slots[m] = v;
+      });
       out.days[dk] = JSON.parse(JSON.stringify(merged));
     });
     out.meta.points = Math.max((local.meta && local.meta.points) || 0, (remote.meta && remote.meta.points) || 0);
