@@ -415,6 +415,7 @@
   function save() {
     if (!state.meta) state.meta = { points: 0 };
     state.meta.updatedAt = Date.now();
+    if (typeof lastActivityAt !== 'undefined') lastActivityAt = Date.now();
     saveLocal();
     schedulePush();
   }
@@ -1016,6 +1017,8 @@
     return { id: null, lastSyncAt: null };
   })();
   var pushTimer = null;
+  var lastActivityAt = Date.now();
+  var lastPullAt = 0;
 
   function saveSync() { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); }
   function setSyncUI(st) {
@@ -1030,7 +1033,7 @@
   function schedulePush() {
     if (!sync.id) return;
     clearTimeout(pushTimer);
-    pushTimer = setTimeout(pushNow, 1500);
+    pushTimer = setTimeout(pushNow, 800);
   }
   function pushNow() {
     if (!sync.id) return Promise.resolve();
@@ -1085,17 +1088,26 @@
     carryOver();
     renderAll();
   }
-  function pullNow() {
+  function pullNow(quiet) {
     if (!sync.id) return Promise.resolve();
-    setSyncUI('syncing');
+    lastPullAt = Date.now();
+    if (!quiet) setSyncUI('syncing');
     return fetch(SYNC_API + '/' + encodeURIComponent(sync.id)).then(function (r) {
       if (!r.ok) throw new Error(r.status);
       return r.json();
     }).then(function (remote) {
       if (remote && typeof remote === 'object' && remote.days) {
-        var merged = mergeStates(state, remote);
-        if (JSON.stringify(merged) !== JSON.stringify(state)) adoptState(merged);
-        if (JSON.stringify(merged) !== JSON.stringify(remote)) schedulePush();
+        var ae = document.activeElement;
+        var typing = ae && ae.tagName === 'INPUT' && ae.type !== 'checkbox' &&
+          typeof ae.value === 'string' && ae.value.trim().length > 0;
+        if (!typing) {
+          var merged = mergeStates(state, remote);
+          if (JSON.stringify(merged) !== JSON.stringify(state)) {
+            adoptState(merged);
+            lastActivityAt = Date.now();
+          }
+          if (JSON.stringify(merged) !== JSON.stringify(remote)) schedulePush();
+        }
       }
       markSynced();
     }).catch(function () { setSyncUI('error'); });
@@ -1181,6 +1193,7 @@
       body.innerHTML =
         '<h2>☁ 동기화 연결됨</h2>' +
         '<p class="desc">아래 링크를 다른 기기(모바일 등)에서 열면 바로 연동됩니다.<br>' +
+        '두 기기를 같이 켜두면 변경사항이 몇 초 안에 서로 반영돼요.<br>' +
         '메모장·메신저 "나에게 보내기"로 링크를 전달하면 편해요.</p>' +
         '<div class="code-box" id="syncLinkBox"></div>' +
         '<button class="btn" id="syncCopyLink">🔗 연동 링크 복사</button>' +
@@ -1207,9 +1220,15 @@
     if (e.target === this) closeSyncModal();
   });
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'visible') pullNow();
+    if (document.visibilityState === 'visible') { lastActivityAt = Date.now(); pullNow(); }
   });
-  setInterval(pullNow, 60 * 1000);
+  // 준실시간 폴링: 최근 3분 내 활동(내 저장 또는 상대 기기의 변경 수신)이 있으면
+  // 4초마다, 그 외에는 30초마다 확인. 화면이 꺼져 있으면 쉬고, 입력 중이면 적용을 미룸.
+  setInterval(function () {
+    if (!sync.id || document.visibilityState !== 'visible') return;
+    var fast = Date.now() - lastActivityAt < 3 * 60 * 1000;
+    if (Date.now() - lastPullAt >= (fast ? 4000 : 30000)) pullNow(true);
+  }, 2000);
 
   /* ── 시작 ─────────────────────────────── */
   carryOver();
