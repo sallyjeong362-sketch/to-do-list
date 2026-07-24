@@ -17,6 +17,7 @@
     --c3: #d99a4e; /* 수업자료 */
     --c4: #9b7cb8; /* 자기계발 */
     --c5: #4fa3a5; /* 일정표 */
+    --c6: #bd7a8c; /* 기타 */
     --sel-bg: #eef3ee;
     --carry-ink: #b5651d;
     --carry-bg: #faeede;
@@ -29,6 +30,7 @@
     --slot-c2: #e9f1e8;
     --slot-c3: #f8efe2;
     --slot-c4: #f0eaf5;
+    --slot-c6: #f6ecef;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -50,6 +52,7 @@
       --slot-c2: #2c352b;
       --slot-c3: #3c342a;
       --slot-c4: #342e3b;
+      --slot-c6: #3a2f33;
     }
   }
   :root[data-theme="light"] {
@@ -58,6 +61,7 @@
     --carry-ink: #b5651d; --carry-bg: #faeede; --slot-bg: #e8f2f2;
     --hover-bg: #f4f7f4; --row-line: #f0ede6; --chip-ink: #ffffff; --sun: #c0564f;
     --slot-c1: #e7eef6; --slot-c2: #e9f1e8; --slot-c3: #f8efe2; --slot-c4: #f0eaf5;
+    --c6: #bd7a8c; --slot-c6: #f6ecef;
   }
   :root[data-theme="dark"] {
     --bg: #22211d; --card: #2c2b26; --ink: #e8e5dc; --muted: #9a968b;
@@ -65,6 +69,7 @@
     --carry-ink: #e0a370; --carry-bg: #3d3227; --slot-bg: #2e3a3a;
     --hover-bg: #31352f; --row-line: #34322b; --chip-ink: #22211d; --sun: #d98079;
     --slot-c1: #29323d; --slot-c2: #2c352b; --slot-c3: #3c342a; --slot-c4: #342e3b;
+    --c6: #bd7a8c; --slot-c6: #3a2f33;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -147,6 +152,7 @@
   .tabs button[data-tab="c2"].active { background: var(--c2); }
   .tabs button[data-tab="c3"].active { background: var(--c3); }
   .tabs button[data-tab="c4"].active { background: var(--c4); }
+  .tabs button[data-tab="c6"].active { background: var(--c6); }
   .tabs button[data-tab="sch"].active { background: var(--c5); }
 
   /* ── 투두 목록 ────────────────────────── */
@@ -222,6 +228,7 @@
   .slot-block.cat-c2 { background: var(--slot-c2); border-left-color: var(--c2); }
   .slot-block.cat-c3 { background: var(--slot-c3); border-left-color: var(--c3); }
   .slot-block.cat-c4 { background: var(--slot-c4); border-left-color: var(--c4); }
+  .slot-block.cat-c6 { background: var(--slot-c6); border-left-color: var(--c6); }
   .balance { margin-bottom: 10px; }
   .balance-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: var(--line); }
   .balance-bar span { height: 100%; }
@@ -371,7 +378,8 @@
   <button data-tab="c2">2. 운영</button>
   <button data-tab="c3">3. 수업자료</button>
   <button data-tab="c4">4. 자기계발</button>
-  <button data-tab="sch">5. 일정표</button>
+  <button data-tab="c6">5. 기타</button>
+  <button data-tab="sch">6. 일정표</button>
 </div>
 
 <div class="panel" id="panel"></div>
@@ -398,9 +406,10 @@
     c1: { name: '수업',     color: 'var(--c1)' },
     c2: { name: '운영',     color: 'var(--c2)' },
     c3: { name: '수업자료', color: 'var(--c3)' },
-    c4: { name: '자기계발', color: 'var(--c4)' }
+    c4: { name: '자기계발', color: 'var(--c4)' },
+    c6: { name: '기타',     color: 'var(--c6)' }
   };
-  var CAT_KEYS = ['c1', 'c2', 'c3', 'c4'];
+  var CAT_KEYS = ['c1', 'c2', 'c3', 'c4', 'c6'];
   var SLOT_START = 5 * 60;   // 05:00
   var SLOT_END = 24 * 60;    // 24:00
   var STEP = 15;
@@ -920,7 +929,7 @@
     if (!total) return '';
     var order = CAT_KEYS.concat(['etc']);
     var colorOf = function (c) { return c === 'etc' ? 'var(--c5)' : 'var(--' + c + ')'; };
-    var nameOf = function (c) { return c === 'etc' ? '기타' : CATS[c].name; };
+    var nameOf = function (c) { return c === 'etc' ? '미분류' : CATS[c].name; };
     var bar = '', legend = '';
     order.forEach(function (c) {
       if (!counts[c]) return;
@@ -955,7 +964,7 @@
 
     var catOpts = '<option value="">카테고리 자동</option>' +
       CAT_KEYS.map(function (k) { return '<option value="' + k + '">' + CATS[k].name + '</option>'; }).join('') +
-      '<option value="etc">기타</option>';
+      '<option value="etc">미분류</option>';
 
     panel.innerHTML =
       '<div class="sch-form">' +
