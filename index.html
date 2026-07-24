@@ -263,6 +263,28 @@
   }
   .toast.show { opacity: .95; }
 
+  /* ── 매일 루틴 ───────────────────────── */
+  .r-card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px 14px; margin-bottom: 12px;
+  }
+  .r-head { display: flex; align-items: center; gap: 8px; }
+  .r-head b { font-size: 14px; }
+  .r-head .r-prog { font-size: 12px; color: var(--muted); flex: 1; }
+  .r-head button.r-toggle { border: none; background: none; font-size: 13px; color: var(--muted); padding: 2px 6px; }
+  ul.r-list { list-style: none; margin-top: 8px; }
+  ul.r-list li { display: flex; align-items: center; gap: 8px; padding: 7px 2px; border-bottom: 1px solid var(--row-line); }
+  ul.r-list li:last-child { border-bottom: none; }
+  ul.r-list .r-title { flex: 1; font-size: 14px; word-break: break-all; }
+  ul.r-list .r-title.done { text-decoration: line-through; color: var(--muted); }
+  .r-add { display: flex; gap: 6px; margin-top: 10px; }
+  .r-add input {
+    flex: 1; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px;
+    font-size: 13px; font-family: inherit; background: var(--bg);
+  }
+  .r-add button { padding: 8px 14px; border: none; border-radius: 10px; background: var(--accent); color: #fff; font-size: 13px; }
+  .r-empty { font-size: 12px; color: var(--muted); margin-top: 8px; }
+
   /* ── 동기화 ───────────────────────────── */
   .sync-chip {
     width: 34px; height: 34px; border-radius: 50%;
@@ -342,6 +364,8 @@
   <button id="goToday">오늘로</button>
 </div>
 
+<div id="routineBox"></div>
+
 <div class="tabs" id="tabs">
   <button data-tab="c1">1. 수업</button>
   <button data-tab="c2">2. 운영</button>
@@ -382,6 +406,7 @@
   var STEP = 15;
   var POINT_TODO = 10;       // 할 일 1개 완료
   var POINT_SLOT = 5;        // 15분 블록 1개 완료
+  var POINT_ROUTINE = 5;     // 루틴 1개 실천
   var LEVELS = [
     { at: 0,    name: '새싹',   emoji: '🌱' },
     { at: 100,  name: '잎새',   emoji: '🌿' },
@@ -406,10 +431,13 @@
       var raw = localStorage.getItem(STORE_KEY);
       if (raw) {
         var s = JSON.parse(raw);
-        if (s && s.days) return s;
+        if (s && s.days) {
+          if (!s.routines) s.routines = [];
+          return s;
+        }
       }
     } catch (e) {}
-    return { days: {}, meta: { points: 0 } };
+    return { days: {}, meta: { points: 0 }, routines: [] };
   }
   function saveLocal() { localStorage.setItem(STORE_KEY, JSON.stringify(state)); }
   function save() {
@@ -423,6 +451,7 @@
     if (!state.days[key]) state.days[key] = { todos: [], slots: {} };
     if (!state.days[key].slots) state.days[key].slots = {};
     if (!state.days[key].todos) state.days[key].todos = [];
+    if (!state.days[key].rchecks) state.days[key].rchecks = {};
     return state.days[key];
   }
 
@@ -444,6 +473,14 @@
     if (d) {
       (d.todos || []).forEach(function (t) { if (t.del) return; total++; if (t.done) done++; });
       Object.keys(d.slots || {}).forEach(function (m) { if (d.slots[m].del) return; total++; if (d.slots[m].done) done++; });
+    }
+    if (key <= todayKey) {
+      var checks = (d && d.rchecks) || {};
+      (state.routines || []).forEach(function (r) {
+        if (r.del || (r.created || '9999-99-99') > key) return;
+        total++;
+        if (checks[r.id] && checks[r.id].done) done++;
+      });
     }
     return { total: total, done: done, rate: total ? done / total : 0 };
   }
@@ -585,6 +622,84 @@
     else if (st.rate >= 0.5) msg = '절반을 넘겼어요. 꾸준히 가봅시다.';
     else msg = st.done + '개 완료 / 총 ' + st.total + '개';
     document.getElementById('sumMsg').textContent = msg;
+  }
+
+  /* ── 매일 루틴 ───────────────────────── */
+  function activeRoutines(dateKey) {
+    return (state.routines || []).filter(function (r) {
+      return !r.del && (r.created || '') <= dateKey;
+    });
+  }
+  function renderRoutines() {
+    var box = document.getElementById('routineBox');
+    var rs = activeRoutines(selectedDate);
+    var d = day(selectedDate);
+    var checks = d.rchecks;
+    var doneN = rs.filter(function (r) { return checks[r.id] && checks[r.id].done; }).length;
+    var open = localStorage.getItem('todoTracker.ui.routineOpen') !== '0';
+
+    var html = '<div class="r-card"><div class="r-head">' +
+      '<b>🔁 매일 루틴</b>' +
+      '<span class="r-prog">' + (rs.length ? doneN + ' / ' + rs.length + ' 실천' : '매일 반복할 일을 등록해 보세요') + '</span>' +
+      '<button class="r-toggle" id="rToggle">' + (open ? '접기 ▴' : '펼치기 ▾') + '</button>' +
+      '</div>';
+    if (open) {
+      html += '<ul class="r-list" id="rList"></ul>' +
+        (rs.length ? '' : '<div class="r-empty">예: 아침 물 한 잔, 영단어 10개, 스트레칭 10분 — 루틴은 다음날로 이월되지 않고 날짜마다 새로 체크해요.</div>') +
+        '<div class="r-add">' +
+        '<input type="text" id="rNew" maxlength="60" placeholder="새 루틴 추가 (매일 반복)">' +
+        '<button id="rAdd">추가</button></div>';
+    }
+    html += '</div>';
+    box.innerHTML = html;
+
+    document.getElementById('rToggle').addEventListener('click', function () {
+      localStorage.setItem('todoTracker.ui.routineOpen', open ? '0' : '1');
+      renderRoutines();
+    });
+    if (!open) return;
+
+    var list = document.getElementById('rList');
+    rs.forEach(function (r) {
+      var chk = checks[r.id] && checks[r.id].done;
+      var li = document.createElement('li');
+      li.innerHTML =
+        '<button class="chk' + (chk ? ' on' : '') + '">' + (chk ? '✓' : '') + '</button>' +
+        '<span class="r-title' + (chk ? ' done' : '') + '"></span>' +
+        '<button class="icon-btn edit" title="수정">✎</button>' +
+        '<button class="icon-btn del" title="삭제">✕</button>';
+      li.querySelector('.r-title').textContent = r.title;
+      li.querySelector('.chk').addEventListener('click', function () {
+        var now = !(checks[r.id] && checks[r.id].done);
+        checks[r.id] = { done: now, ts: Date.now() };
+        addPoints(now ? POINT_ROUTINE : -POINT_ROUTINE, now ? '루틴 실천!' : null);
+        save(); renderAll();
+      });
+      li.querySelector('.edit').addEventListener('click', function () {
+        var v = prompt('루틴 수정', r.title);
+        if (v !== null && v.trim()) { r.title = v.trim(); r.ts = Date.now(); save(); renderAll(); }
+      });
+      li.querySelector('.del').addEventListener('click', function () {
+        if (!confirm('루틴 「' + r.title + '」을(를) 삭제할까요?\n매일 목록에서 사라집니다.')) return;
+        r.del = Date.now(); r.ts = Date.now();
+        save(); renderAll();
+      });
+      list.appendChild(li);
+    });
+
+    function addRoutine() {
+      var inp = document.getElementById('rNew');
+      var v = inp.value.trim();
+      if (!v) return;
+      state.routines.push({ id: uid(), title: v, created: selectedDate, ts: Date.now() });
+      save(); renderAll();
+      var again = document.getElementById('rNew');
+      if (again) again.focus();
+    }
+    document.getElementById('rAdd').addEventListener('click', addRoutine);
+    document.getElementById('rNew').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') addRoutine();
+    });
   }
 
   /* ── 할 일 ↔ 일정표 블록 연동 ─────────── */
@@ -982,6 +1097,7 @@
     renderReward();
     renderCalendar();
     renderDatebar();
+    renderRoutines();
     renderTabs();
     renderPanel();
   }
@@ -1062,6 +1178,22 @@
     var newer = rU >= lU ? remote : local;
     var older = rU >= lU ? local : remote;
     var out = { days: {}, meta: {} };
+    var nowG = Date.now();
+    var GCG = 14 * 24 * 60 * 60 * 1000;
+    // 루틴 목록: 항목별 최신 수정(삭제 포함)이 이기는 합집합
+    var rById = {}, rOrder = [];
+    ((newer.routines) || []).forEach(function (r) { rById[r.id] = r; rOrder.push(r.id); });
+    ((older.routines) || []).forEach(function (r) {
+      var prev = rById[r.id];
+      if (prev) { if ((r.ts || 0) > (prev.ts || 0)) rById[r.id] = r; return; }
+      rById[r.id] = r; rOrder.push(r.id);
+    });
+    out.routines = [];
+    rOrder.forEach(function (id) {
+      var r = rById[id];
+      if (r.del && nowG - r.del > GCG) return;
+      out.routines.push(JSON.parse(JSON.stringify(r)));
+    });
     var dates = {};
     Object.keys(local.days || {}).forEach(function (k) { dates[k] = 1; });
     Object.keys(remote.days || {}).forEach(function (k) { dates[k] = 1; });
@@ -1093,6 +1225,16 @@
         if (t.del && now - t.del > GC_MS) return; // 오래된 삭제 표식 정리
         merged.todos.push(t);
       });
+      // 루틴 체크: 날짜×루틴 단위로 최신 체크가 이김
+      var ca = a.rchecks || {}, cb = b.rchecks || {};
+      merged.rchecks = {};
+      var cKeys = {};
+      Object.keys(ca).forEach(function (k) { cKeys[k] = 1; });
+      Object.keys(cb).forEach(function (k) { cKeys[k] = 1; });
+      Object.keys(cKeys).forEach(function (k) {
+        var va = ca[k], vb = cb[k];
+        merged.rchecks[k] = !va ? vb : (!vb ? va : (((vb.ts || 0) > (va.ts || 0)) ? vb : va));
+      });
       var sa = a.slots || {}, sb = b.slots || {};
       var mins = {};
       Object.keys(sa).forEach(function (m) { mins[m] = 1; });
@@ -1113,6 +1255,7 @@
     state = next;
     if (!state.meta) state.meta = { points: 0 };
     if (!state.days) state.days = {};
+    if (!state.routines) state.routines = [];
     saveLocal();
     carryOver();
     renderAll();
