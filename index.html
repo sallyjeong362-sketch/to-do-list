@@ -254,6 +254,22 @@
     flex: 1; padding: 4px 8px; font-size: 13px; font-family: inherit;
     border: 1px solid var(--c5); border-radius: 8px; background: var(--bg); color: var(--ink);
   }
+  .slot-editor {
+    flex: 1; display: flex; flex-direction: column; gap: 5px;
+    border: 1px dashed var(--c5); border-radius: 8px; background: var(--hover-bg);
+    padding: 7px 8px; margin: 2px 0;
+  }
+  .slot-editor input, .slot-editor select {
+    padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px;
+    font-size: 13px; font-family: inherit; background: var(--card);
+  }
+  .slot-editor .se-row { display: flex; gap: 5px; }
+  .slot-editor .se-row select { flex: 1; min-width: 0; }
+  .slot-editor .se-row button {
+    flex: none; padding: 6px 12px; border: none; border-radius: 8px;
+    background: var(--c5); color: #fff; font-size: 13px;
+  }
+  .slot-editor .se-row button.se-cancel { background: none; border: 1px solid var(--line); color: var(--muted); }
 
   /* ── 오늘 요약 ────────────────────────── */
   .day-summary {
@@ -906,6 +922,22 @@
   }
 
   /* ── 렌더: 일정표 (15분 단위) ─────────── */
+  var editorMin = null;
+  function placeActivity(name, start, dur, selCat) {
+    var slots = day(selectedDate).slots;
+    if (!name) { toast('활동 이름을 입력해 주세요'); return false; }
+    if (start + dur > SLOT_END) { toast('24:00을 넘길 수 없어요'); return false; }
+    for (var m2 = start; m2 < start + dur; m2 += STEP) {
+      if (slots[m2] && !slots[m2].del) { toast(minToHM(m2) + ' 칸이 이미 차 있어요'); return false; }
+    }
+    var cat = selCat && selCat !== 'etc' ? selCat : (selCat === 'etc' ? null : matchTodoCat(name));
+    var g = uid();
+    for (var m3 = start; m3 < start + dur; m3 += STEP) {
+      slots[m3] = { name: name, done: false, group: g, cat: cat, ts: Date.now() };
+    }
+    save();
+    return true;
+  }
   function matchTodoCat(name) {
     var todos = day(selectedDate).todos;
     for (var i = 0; i < todos.length; i++) {
@@ -948,10 +980,6 @@
     var keys = Object.keys(slots).filter(function (k) { return !slots[k].del; });
     var doneN = keys.filter(function (k) { return slots[k].done; }).length;
 
-    var timeOpts = '';
-    for (var m = SLOT_START; m < SLOT_END; m += STEP) {
-      timeOpts += '<option value="' + m + '">' + minToHM(m) + '</option>';
-    }
     var durOpts = [15, 30, 45, 60, 90, 120].map(function (n) {
       return '<option value="' + n + '">' + n + '분</option>';
     }).join('');
@@ -966,16 +994,10 @@
       CAT_KEYS.map(function (k) { return '<option value="' + k + '">' + CATS[k].name + '</option>'; }).join('') +
       '<option value="etc">미분류</option>';
 
+    if (editorMin !== null && slots[editorMin] && !slots[editorMin].del) editorMin = null;
+
     panel.innerHTML =
-      '<div class="sch-form">' +
-      '  <input type="text" id="schName" list="schDl" placeholder="활동 (할 일에서 선택 가능)" maxlength="60">' +
-      '  <datalist id="schDl">' + dl + '</datalist>' +
-      '  <select id="schCat" title="카테고리">' + catOpts + '</select>' +
-      '  <select id="schStart">' + timeOpts + '</select>' +
-      '  <select id="schDur">' + durOpts + '</select>' +
-      '  <button id="schAdd">배치</button>' +
-      '</div>' +
-      '<div class="sch-progress">15분 블록 ' + doneN + ' / ' + keys.length + ' 실천 · 빈 칸 클릭=바로 입력 · ✓ 누른 채 드래그=여러 칸 체크/해제 · ⇕ 드래그=같은 활동으로 아래 칸 채우기(엑셀식)</div>' +
+      '<div class="sch-progress">15분 블록 ' + doneN + ' / ' + keys.length + ' 실천 · <b>시간 칸을 누르면 그 자리에서 바로 배치</b> · ✓ 누른 채 드래그=여러 칸 체크/해제 · ⇕ 드래그=같은 활동으로 칸 채우기</div>' +
       balanceHTML(slots) +
       '<div class="timeline" id="timeline"></div>';
 
@@ -1037,53 +1059,46 @@
             });
             save(); renderAll();
           });
+        } else if (editorMin === mm) {
+          row.innerHTML = timeCell +
+            '<div class="slot-body"><div class="slot-editor">' +
+            '<input id="seName" list="seDl" maxlength="60" placeholder="' + minToHM(mm) + ' 시작 — 활동 이름 (Enter=배치)">' +
+            '<datalist id="seDl">' + dl + '</datalist>' +
+            '<div class="se-row">' +
+            '<select id="seCat" title="카테고리">' + catOpts + '</select>' +
+            '<select id="seDur" title="소요 시간">' + durOpts + '</select>' +
+            '<button id="seOk">배치</button>' +
+            '<button class="se-cancel" id="seCancel" title="취소">✕</button>' +
+            '</div></div></div>';
+          var doPlace = function () {
+            var nm = document.getElementById('seName').value.trim();
+            var ok = placeActivity(nm, mm,
+              +document.getElementById('seDur').value,
+              document.getElementById('seCat').value);
+            if (ok) { editorMin = null; renderAll(); }
+          };
+          row.querySelector('#seOk').addEventListener('click', doPlace);
+          row.querySelector('#seCancel').addEventListener('click', function () {
+            editorMin = null; renderAll();
+          });
+          row.querySelector('#seName').addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') doPlace();
+            if (e.key === 'Escape') { editorMin = null; renderAll(); }
+            e.stopPropagation();
+          });
         } else {
           row.innerHTML = timeCell + '<div class="slot-body clickable"></div>';
           row.querySelector('.slot-body').addEventListener('click', function () {
-            if (this.querySelector('input')) return;
-            this.classList.remove('clickable');
-            this.innerHTML = '<input class="slot-input" maxlength="60" placeholder="' + minToHM(mm) + ' 세부 계획 입력 후 Enter">';
-            var inp = this.querySelector('input');
-            inp.focus();
-            var committed = false;
-            var commit = function () {
-              if (committed) return;
-              committed = true;
-              var v = inp.value.trim();
-              if (v) {
-                slots[mm] = { name: v, done: false, group: uid(), cat: matchTodoCat(v), ts: Date.now() };
-                save();
-              }
-              renderAll();
-            };
-            inp.addEventListener('keydown', function (e) {
-              if (e.key === 'Enter') commit();
-              if (e.key === 'Escape') { committed = true; renderAll(); }
-            });
-            inp.addEventListener('blur', commit);
+            editorMin = mm;
+            renderAll();
           });
         }
         tl.appendChild(row);
       })(mm);
     }
 
-    document.getElementById('schAdd').addEventListener('click', function () {
-      var name = document.getElementById('schName').value.trim();
-      if (!name) { toast('활동 이름을 입력해 주세요'); return; }
-      var start = +document.getElementById('schStart').value;
-      var dur = +document.getElementById('schDur').value;
-      if (start + dur > SLOT_END) { toast('24:00을 넘길 수 없어요'); return; }
-      for (var m2 = start; m2 < start + dur; m2 += STEP) {
-        if (slots[m2] && !slots[m2].del) { toast(minToHM(m2) + ' 칸이 이미 차 있어요'); return; }
-      }
-      var selCat = document.getElementById('schCat').value;
-      var cat = selCat && selCat !== 'etc' ? selCat : (selCat === 'etc' ? null : matchTodoCat(name));
-      var g = uid();
-      for (var m3 = start; m3 < start + dur; m3 += STEP) {
-        slots[m3] = { name: name, done: false, group: g, cat: cat, ts: Date.now() };
-      }
-      save(); renderAll();
-    });
+    var seInput = document.getElementById('seName');
+    if (seInput) seInput.focus();
   }
 
   /* ── 렌더: 탭/전체 ────────────────────── */
@@ -1280,7 +1295,8 @@
       if (remote && typeof remote === 'object' && remote.days) {
         var ae = document.activeElement;
         var typing = ae && ae.tagName === 'INPUT' && ae.type !== 'checkbox' &&
-          typeof ae.value === 'string' && ae.value.trim().length > 0;
+          ((typeof ae.value === 'string' && ae.value.trim().length > 0) ||
+           (ae.closest && ae.closest('.slot-editor')));
         if (!typing) {
           var merged = mergeStates(state, remote);
           if (JSON.stringify(merged) !== JSON.stringify(state)) {
