@@ -1017,7 +1017,7 @@
             '<span class="name' + (s.done ? ' done' : '') + '"></span>' +
             '<input class="note-input" maxlength="60" placeholder="세부 작업 메모">' +
             '<span class="fill-handle" title="드래그해서 같은 활동으로 칸 채우기">⇕</span>' +
-            '<button class="icon-btn del" title="이 활동 삭제">✕</button>' +
+            '<button class="icon-btn del" title="이 칸(15분)만 삭제">✕</button>' +
             '</div></div>';
           row.querySelector('.name').textContent = s.name;
           var noteInp = row.querySelector('.note-input');
@@ -1050,14 +1050,10 @@
             save(); renderAll();
           });
           row.querySelector('.del').addEventListener('click', function () {
-            var g = s.group;
-            var members = Object.keys(slots).filter(function (k) { return slots[k].group === g; });
-            if (!confirm('「' + s.name + '」 (' + members.length * STEP + '분) 일정을 삭제할까요?')) return;
-            members.forEach(function (k) {
-              if (slots[k].done) addPoints(-POINT_SLOT);
-              slots[k] = { del: Date.now(), ts: Date.now() };
-            });
+            if (s.done) addPoints(-POINT_SLOT);
+            slots[mm] = { del: Date.now(), ts: Date.now() };
             save(); renderAll();
+            toast(minToHM(mm) + ' 칸의 「' + s.name + '」 삭제');
           });
         } else if (editorMin === mm) {
           row.innerHTML = timeCell +
