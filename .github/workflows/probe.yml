@@ -6,27 +6,31 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe anonymous JSON storage services
+      - name: Probe textdb and jsonblob renewal
         run: |
           set +e
-          echo "=== 1. jsonblob create ==="
-          curl -sS -i -m 20 -X POST https://jsonblob.com/api/jsonBlob -H 'Content-Type: application/json' -d '{"probe":1}' | head -30
+          echo "=== A1. jsonblob create ==="
+          RESP=$(curl -sS -i -m 20 -X POST https://jsonblob.com/api/jsonBlob -H 'Content-Type: application/json' -d '{"probe":2}')
+          echo "$RESP" | grep -i -E 'HTTP|x-jsonblob-expires-at|location'
+          ID=$(echo "$RESP" | grep -i '^location:' | sed 's#.*/##' | tr -d '\r')
+          echo "ID=$ID"
+          sleep 3
+          echo "=== A2. jsonblob GET (does access renew expiry?) ==="
+          curl -sS -i -m 20 https://jsonblob.com/api/jsonBlob/$ID | grep -i -E 'HTTP|x-jsonblob-expires-at'
+          echo "=== B. textdb POST /update (no trailing slash) ==="
+          curl -sS -i -m 20 -X POST https://textdb.online/update --data-urlencode 'key=probe_cl_A1' --data-urlencode 'value={"a":1}' | head -15
           echo
-          echo "=== 2. npoint create ==="
-          curl -sS -i -m 20 -X POST https://api.npoint.io -H 'Content-Type: application/json' -d '{"probe":1}' | head -30
-          echo
-          echo "=== 3. kvdb bucket create ==="
-          curl -sS -i -m 20 -X POST https://kvdb.io -d '' | head -20
-          echo
-          echo "=== 4. textdb write ==="
-          curl -sS -i -m 20 -X POST https://textdb.online/update/ --data-urlencode 'key=probe_claude_20260725' --data-urlencode 'value={"probe":1}' | head -20
-          echo
-          echo "=== 5. textdb read ==="
-          curl -sS -i -m 20 https://textdb.online/probe_claude_20260725 | head -20
-          echo
-          echo "=== 6. jsonbin health ==="
-          curl -sS -i -m 20 https://api.jsonbin.io/v3 | head -10
-          echo
-          echo "=== 7. sheetdb/pantry health ==="
-          curl -sS -i -m 20 https://getpantry.cloud/ | head -8
-          echo "PROBE DONE"
+          echo "=== C. textdb read back ==="
+          curl -sS -m 20 https://textdb.online/probe_cl_A1 ; echo
+          echo "=== D. textdb big value (200KB) ==="
+          python3 -c "print('{\"x\":\"' + 'a'*200000 + '\"}')" > big.json
+          curl -sS -i -m 30 -X POST https://textdb.online/update --data-urlencode 'key=probe_cl_big' --data-urlencode value@big.json | head -6
+          echo "readback bytes:"
+          curl -sS -m 30 https://textdb.online/probe_cl_big | wc -c
+          echo "=== E. textdb GET-style update ==="
+          curl -sS -i -m 20 'https://textdb.online/update?key=probe_cl_A2&value=hello2' | head -6
+          curl -sS -m 20 https://textdb.online/probe_cl_A2 ; echo
+          echo "=== F. textdb overwrite ==="
+          curl -sS -m 20 -X POST https://textdb.online/update --data-urlencode 'key=probe_cl_A1' --data-urlencode 'value={"a":2}' >/dev/null
+          curl -sS -m 20 https://textdb.online/probe_cl_A1 ; echo
+          echo "PROBE2 DONE"
