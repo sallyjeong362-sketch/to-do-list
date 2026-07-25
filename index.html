@@ -1155,7 +1155,47 @@
   }, 60 * 1000);
 
   /* ── 기기 간 동기화 (로그인 불필요) ────── */
-  var SYNC_API = 'https://jsonblob.com/api/jsonBlob';
+  // textdb.online: 키를 클라이언트가 정하는 key-value 저장소.
+  // 키가 서버에 없어도 '빈 값'일 뿐이라 저장소 소실 개념이 없고, 다음 저장이 곧 복구다.
+  var SYNC_READ = 'https://textdb.online/';
+  var SYNC_WRITE = 'https://textdb.online/update';
+  var SYNC_PAYLOAD_LIMIT = 150000; // textdb 안전 한도(실측 160KB OK, 200KB 실패)
+
+  function encodeState(cb) {
+    var json = JSON.stringify(state);
+    if (typeof CompressionStream === 'undefined') { cb('RAW1:' + json); return; }
+    try {
+      var st = new Blob([json]).stream().pipeThrough(new CompressionStream('gzip'));
+      new Response(st).arrayBuffer().then(function (buf) {
+        var bytes = new Uint8Array(buf);
+        var bin = '';
+        for (var i = 0; i < bytes.length; i += 0x8000) {
+          bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        }
+        cb('GZ1:' + btoa(bin));
+      }, function () { cb('RAW1:' + json); });
+    } catch (e) { cb('RAW1:' + json); }
+  }
+  function decodePayload(text, cb) {
+    if (!text) { cb(null); return; }
+    if (text.slice(0, 5) === 'RAW1:') {
+      try { cb(JSON.parse(text.slice(5))); } catch (e) { cb(null); }
+      return;
+    }
+    if (text.slice(0, 4) === 'GZ1:' && typeof DecompressionStream !== 'undefined') {
+      try {
+        var bin = atob(text.slice(4));
+        var bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        var st = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+        new Response(st).text().then(function (json) {
+          try { cb(JSON.parse(json)); } catch (e) { cb(null); }
+        }, function () { cb(null); });
+      } catch (e) { cb(null); }
+      return;
+    }
+    try { cb(JSON.parse(text)); } catch (e) { cb(null); }
+  }
   var SYNC_KEY = 'todoTracker.sync';
   var sync = (function () {
     try { var s = JSON.parse(localStorage.getItem(SYNC_KEY)); if (s && typeof s === 'object') return s; } catch (e) {}
@@ -1195,18 +1235,30 @@
     clearTimeout(pushTimer);
     pushTimer = setTimeout(pushNow, 800);
   }
+  var sizeWarnedAt = 0;
   function pushNow() {
     if (!sync.id) return Promise.resolve();
     setSyncUI('syncing');
-    return fetch(SYNC_API + '/' + encodeURIComponent(sync.id), {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(state)
-    }).then(function (r) {
-      if (r.status === 404) syncGone();
-      if (!r.ok) throw new Error(r.status);
-      markSynced();
-    }).catch(function () { setSyncUI('error'); });
+    return new Promise(function (resolve) {
+      encodeState(function (payload) {
+        if (payload.length > SYNC_PAYLOAD_LIMIT && Date.now() - sizeWarnedAt > 60 * 60 * 1000) {
+          sizeWarnedAt = Date.now();
+          toast('데이터가 동기화 용량 한도에 가까워요. 오래된 날짜를 정리해 주세요.');
+        }
+        fetch(SYNC_WRITE, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'key=' + encodeURIComponent(sync.id) + '&value=' + encodeURIComponent(payload)
+        }).then(function (r) {
+          if (!r.ok) throw new Error(r.status);
+          return r.json();
+        }).then(function (j) {
+          if (!j || j.status !== 1) throw new Error('write rejected');
+          markSynced();
+          resolve();
+        }).catch(function () { setSyncUI('error'); resolve(); });
+      });
+    });
   }
   function mergeStates(local, remote) {
     var lU = (local.meta && local.meta.updatedAt) || 0;
@@ -1300,70 +1352,71 @@
     if (!sync.id) return Promise.resolve();
     lastPullAt = Date.now();
     if (!quiet) setSyncUI('syncing');
-    return fetch(SYNC_API + '/' + encodeURIComponent(sync.id)).then(function (r) {
-      if (r.status === 404) syncGone();
+    return fetch(SYNC_READ + encodeURIComponent(sync.id), { cache: 'no-store' }).then(function (r) {
       if (!r.ok) throw new Error(r.status);
-      return r.json();
-    }).then(function (remote) {
-      if (remote && typeof remote === 'object' && remote.days) {
-        var ae = document.activeElement;
-        var typing = ae && ae.tagName === 'INPUT' && ae.type !== 'checkbox' &&
-          ((typeof ae.value === 'string' && ae.value.trim().length > 0) ||
-           (ae.closest && ae.closest('.slot-editor')));
-        if (!typing) {
-          var merged = mergeStates(state, remote);
-          if (JSON.stringify(merged) !== JSON.stringify(state)) {
-            adoptState(merged);
-            lastActivityAt = Date.now();
+      return r.text();
+    }).then(function (text) {
+      return new Promise(function (resolve) {
+        decodePayload(text, function (remote) {
+          if (remote && typeof remote === 'object' && remote.days) {
+            var ae = document.activeElement;
+            var typing = ae && ae.tagName === 'INPUT' && ae.type !== 'checkbox' &&
+              ((typeof ae.value === 'string' && ae.value.trim().length > 0) ||
+               (ae.closest && ae.closest('.slot-editor')));
+            if (!typing) {
+              var merged = mergeStates(state, remote);
+              if (JSON.stringify(merged) !== JSON.stringify(state)) {
+                adoptState(merged);
+                lastActivityAt = Date.now();
+              }
+              if (JSON.stringify(merged) !== JSON.stringify(remote)) schedulePush();
+            }
+          } else if (text === '') {
+            // 아직 아무 기기도 저장한 적 없는 키 → 이 기기의 데이터를 올린다
+            schedulePush();
           }
-          if (JSON.stringify(merged) !== JSON.stringify(remote)) schedulePush();
-        }
-      }
-      markSynced();
+          markSynced();
+          resolve();
+        });
+      });
     }).catch(function () { setSyncUI('error'); });
   }
   function createRoom() {
-    setSyncUI('syncing');
     state.meta.updatedAt = Date.now();
     saveLocal();
-    return fetch(SYNC_API, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(state)
-    }).then(function (r) {
-      if (!r.ok) throw new Error(r.status);
-      var loc = r.headers.get('Location') || r.headers.get('location') || '';
-      var id = loc.split('/').pop();
-      if (!id) throw new Error('no id');
-      sync.id = id;
-      markSynced();
-      setSyncUrl();
-      renderSyncModal();
-      toast('동기화 코드가 만들어졌어요 ☁');
-    }).catch(function () {
-      setSyncUI('error');
-      alert('동기화 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.');
-    });
+    sync.id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : uid() + '-' + uid() + '-' + uid();
+    saveSync();
+    setSyncUrl();
+    renderSyncModal();
+    toast('동기화 코드가 만들어졌어요 ☁');
+    return pushNow();
   }
   function connectRoom(id) {
     id = (id || '').trim().split('/').pop();
     if (!id) return Promise.resolve();
     setSyncUI('syncing');
-    return fetch(SYNC_API + '/' + encodeURIComponent(id)).then(function (r) {
+    return fetch(SYNC_READ + encodeURIComponent(id), { cache: 'no-store' }).then(function (r) {
       if (!r.ok) throw new Error(r.status);
-      return r.json();
-    }).then(function (remote) {
-      sync.id = id;
-      if (remote && typeof remote === 'object' && remote.days) {
-        adoptState(mergeStates(state, remote));
-      }
-      pushNow();
-      setSyncUrl();
-      renderSyncModal();
-      toast('동기화가 연결됐어요 ☁ 두 기기의 데이터를 합쳤어요');
+      return r.text();
+    }).then(function (text) {
+      return new Promise(function (resolve) {
+        decodePayload(text, function (remote) {
+          sync.id = id;
+          if (remote && typeof remote === 'object' && remote.days) {
+            adoptState(mergeStates(state, remote));
+          }
+          pushNow();
+          setSyncUrl();
+          renderSyncModal();
+          toast('동기화가 연결됐어요 ☁ 두 기기의 데이터를 합쳤어요');
+          resolve();
+        });
+      });
     }).catch(function () {
       setSyncUI('error');
-      alert('해당 코드를 찾을 수 없어요. 코드를 다시 확인해 주세요.');
+      alert('동기화 서버에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.');
     });
   }
   function disconnectRoom() {
