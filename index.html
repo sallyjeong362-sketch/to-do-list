@@ -1166,6 +1166,19 @@
   var lastPullAt = 0;
 
   function saveSync() { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); }
+  function setSyncUrl() {
+    try {
+      if (!history.replaceState) return;
+      if (sync.id) history.replaceState(null, '', location.pathname + '?sync=' + encodeURIComponent(sync.id));
+      else history.replaceState(null, '', location.pathname);
+    } catch (e) {}
+  }
+  var goneNotified = false;
+  function syncGone() {
+    if (goneNotified) return;
+    goneNotified = true;
+    toast('동기화 저장소를 찾을 수 없어요. ☁ 버튼에서 새 코드를 만들어 다시 연결해 주세요.');
+  }
   function setSyncUI(st) {
     var btn = document.getElementById('syncBtn');
     btn.className = 'sync-chip' + (sync.id ? ' ' + st : '');
@@ -1188,6 +1201,7 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(state)
     }).then(function (r) {
+      if (r.status === 404) syncGone();
       if (!r.ok) throw new Error(r.status);
       markSynced();
     }).catch(function () { setSyncUI('error'); });
@@ -1285,6 +1299,7 @@
     lastPullAt = Date.now();
     if (!quiet) setSyncUI('syncing');
     return fetch(SYNC_API + '/' + encodeURIComponent(sync.id)).then(function (r) {
+      if (r.status === 404) syncGone();
       if (!r.ok) throw new Error(r.status);
       return r.json();
     }).then(function (remote) {
@@ -1320,6 +1335,7 @@
       if (!id) throw new Error('no id');
       sync.id = id;
       markSynced();
+      setSyncUrl();
       renderSyncModal();
       toast('동기화 코드가 만들어졌어요 ☁');
     }).catch(function () {
@@ -1340,6 +1356,7 @@
         adoptState(mergeStates(state, remote));
       }
       pushNow();
+      setSyncUrl();
       renderSyncModal();
       toast('동기화가 연결됐어요 ☁ 두 기기의 데이터를 합쳤어요');
     }).catch(function () {
@@ -1350,7 +1367,7 @@
   function disconnectRoom() {
     if (!confirm('동기화 연결을 해제할까요?\n(이 기기의 데이터는 그대로 남고, 다른 기기와의 연동만 끊어져요)')) return;
     sync.id = null; sync.lastSyncAt = null;
-    saveSync(); setSyncUI('off'); renderSyncModal();
+    saveSync(); setSyncUrl(); setSyncUI('off'); renderSyncModal();
   }
   function copyText(text, label) {
     var done = function () { toast(label + ' 복사 완료!'); };
@@ -1424,17 +1441,32 @@
   }, 2000);
 
   /* ── 시작 ─────────────────────────────── */
+  // 하루 한 번 로컬 백업 스냅샷 (만일의 데이터 사고 대비)
+  (function () {
+    try {
+      var K = 'todoTracker.bak';
+      if (localStorage.getItem(K + '.date') !== todayKey) {
+        var cur = localStorage.getItem(STORE_KEY);
+        if (cur) {
+          localStorage.setItem(K, cur);
+          localStorage.setItem(K + '.date', todayKey);
+        }
+      }
+    } catch (e) {}
+  })();
   carryOver();
   renderAll();
   setSyncUI('ok');
   (function () {
     var m = location.search.match(/[?&]sync=([^&]+)/);
     var linkId = m ? decodeURIComponent(m[1]) : null;
-    if (linkId && history.replaceState) {
-      history.replaceState(null, '', location.pathname);
+    if (linkId && !sync.id) {
+      // 저장소가 비워진 기기도 링크만 열면 자동 재연결되어 클라우드에서 복원
+      connectRoom(linkId);
+    } else {
+      if (sync.id) pullNow();
+      setSyncUrl();
     }
-    if (linkId && linkId !== sync.id) connectRoom(linkId);
-    else if (sync.id) pullNow();
   })();
 })();
 </script>
