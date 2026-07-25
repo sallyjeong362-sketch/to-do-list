@@ -1,0 +1,32 @@
+name: Probe sync backends
+on:
+  push:
+    branches: [claude/category-todo-app-rc9si3]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe anonymous JSON storage services
+        run: |
+          set +e
+          echo "=== 1. jsonblob create ==="
+          curl -sS -i -m 20 -X POST https://jsonblob.com/api/jsonBlob -H 'Content-Type: application/json' -d '{"probe":1}' | head -30
+          echo
+          echo "=== 2. npoint create ==="
+          curl -sS -i -m 20 -X POST https://api.npoint.io -H 'Content-Type: application/json' -d '{"probe":1}' | head -30
+          echo
+          echo "=== 3. kvdb bucket create ==="
+          curl -sS -i -m 20 -X POST https://kvdb.io -d '' | head -20
+          echo
+          echo "=== 4. textdb write ==="
+          curl -sS -i -m 20 -X POST https://textdb.online/update/ --data-urlencode 'key=probe_claude_20260725' --data-urlencode 'value={"probe":1}' | head -20
+          echo
+          echo "=== 5. textdb read ==="
+          curl -sS -i -m 20 https://textdb.online/probe_claude_20260725 | head -20
+          echo
+          echo "=== 6. jsonbin health ==="
+          curl -sS -i -m 20 https://api.jsonbin.io/v3 | head -10
+          echo
+          echo "=== 7. sheetdb/pantry health ==="
+          curl -sS -i -m 20 https://getpantry.cloud/ | head -8
+          echo "PROBE DONE"
