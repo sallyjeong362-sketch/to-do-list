@@ -1174,7 +1174,9 @@
     } catch (e) {}
   }
   var goneNotified = false;
+  var storeGone = false;
   function syncGone() {
+    storeGone = true;
     if (goneNotified) return;
     goneNotified = true;
     toast('동기화 저장소를 찾을 수 없어요. ☁ 버튼에서 새 코드를 만들어 다시 연결해 주세요.');
@@ -1186,7 +1188,7 @@
     btn.title = !sync.id ? '기기 간 동기화 설정'
       : (st === 'error' ? '동기화 오류 — 눌러서 확인' : '동기화 ' + (st === 'syncing' ? '중…' : '연결됨'));
   }
-  function markSynced() { sync.lastSyncAt = Date.now(); saveSync(); setSyncUI('ok'); }
+  function markSynced() { sync.lastSyncAt = Date.now(); storeGone = false; goneNotified = false; saveSync(); setSyncUI('ok'); }
 
   function schedulePush() {
     if (!sync.id) return;
@@ -1402,6 +1404,11 @@
     } else {
       body.innerHTML =
         '<h2>☁ 동기화 연결됨</h2>' +
+        (storeGone
+          ? '<p class="desc" style="color:var(--sun)">⚠️ 서버에서 동기화 저장소가 사라졌어요(무료 저장소 정리 등).<br>' +
+            '이 기기의 데이터는 안전합니다. 아래 <b>새 코드로 다시 만들기</b>를 누르면 지금 데이터로 새 저장소가 만들어져요.<br>' +
+            '그 다음 새 연동 링크를 다른 기기에서 한 번만 열면 다시 합쳐집니다.</p>'
+          : '') +
         '<p class="desc">아래 링크를 다른 기기(모바일 등)에서 열면 바로 연동됩니다.<br>' +
         '두 기기를 같이 켜두면 변경사항이 몇 초 안에 서로 반영돼요.<br>' +
         '메모장·메신저 "나에게 보내기"로 링크를 전달하면 편해요.</p>' +
@@ -1409,6 +1416,7 @@
         '<button class="btn" id="syncCopyLink">🔗 연동 링크 복사</button>' +
         '<button class="btn secondary" id="syncCopyCode">코드만 복사</button>' +
         '<button class="btn secondary" id="syncNow">지금 동기화</button>' +
+        '<button class="btn secondary" id="syncRecreate">🔄 새 코드로 다시 만들기 (데이터 유지)</button>' +
         '<button class="btn danger" id="syncOff">연결 해제</button>' +
         '<div class="sync-meta">마지막 동기화: ' + fmtTime(sync.lastSyncAt) + '</div>' +
         '<div class="close-row"><button id="syncClose">닫기</button></div>';
@@ -1417,6 +1425,10 @@
       document.getElementById('syncCopyCode').addEventListener('click', function () { copyText(sync.id, '코드'); });
       document.getElementById('syncNow').addEventListener('click', function () {
         pullNow().then(pushNow).then(renderSyncModal);
+      });
+      document.getElementById('syncRecreate').addEventListener('click', function () {
+        if (!confirm('새 동기화 코드를 만들까요?\n이 기기의 데이터는 그대로 유지되고, 다른 기기는 새 링크로 다시 연결해야 해요.')) return;
+        createRoom();
       });
       document.getElementById('syncOff').addEventListener('click', disconnectRoom);
     }
@@ -1463,6 +1475,13 @@
     if (linkId && !sync.id) {
       // 저장소가 비워진 기기도 링크만 열면 자동 재연결되어 클라우드에서 복원
       connectRoom(linkId);
+    } else if (linkId && sync.id && linkId !== sync.id) {
+      if (confirm('이 링크의 동기화 코드가 현재 연결과 달라요.\n링크의 코드로 전환할까요? (기기의 데이터는 합쳐져요)')) {
+        connectRoom(linkId);
+      } else {
+        setSyncUrl();
+        pullNow();
+      }
     } else {
       if (sync.id) pullNow();
       setSyncUrl();
