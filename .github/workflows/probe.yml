@@ -6,31 +6,25 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Probe textdb and jsonblob renewal
+      - name: Probe textdb limits
         run: |
           set +e
-          echo "=== A1. jsonblob create ==="
-          RESP=$(curl -sS -i -m 20 -X POST https://jsonblob.com/api/jsonBlob -H 'Content-Type: application/json' -d '{"probe":2}')
-          echo "$RESP" | grep -i -E 'HTTP|x-jsonblob-expires-at|location'
-          ID=$(echo "$RESP" | grep -i '^location:' | sed 's#.*/##' | tr -d '\r')
-          echo "ID=$ID"
-          sleep 3
-          echo "=== A2. jsonblob GET (does access renew expiry?) ==="
-          curl -sS -i -m 20 https://jsonblob.com/api/jsonBlob/$ID | grep -i -E 'HTTP|x-jsonblob-expires-at'
-          echo "=== B. textdb POST /update (no trailing slash) ==="
-          curl -sS -i -m 20 -X POST https://textdb.online/update --data-urlencode 'key=probe_cl_A1' --data-urlencode 'value={"a":1}' | head -15
-          echo
-          echo "=== C. textdb read back ==="
-          curl -sS -m 20 https://textdb.online/probe_cl_A1 ; echo
-          echo "=== D. textdb big value (200KB) ==="
-          python3 -c "print('{\"x\":\"' + 'a'*200000 + '\"}')" > big.json
-          curl -sS -i -m 30 -X POST https://textdb.online/update --data-urlencode 'key=probe_cl_big' --data-urlencode value@big.json | head -6
-          echo "readback bytes:"
-          curl -sS -m 30 https://textdb.online/probe_cl_big | wc -c
-          echo "=== E. textdb GET-style update ==="
-          curl -sS -i -m 20 'https://textdb.online/update?key=probe_cl_A2&value=hello2' | head -6
-          curl -sS -m 20 https://textdb.online/probe_cl_A2 ; echo
-          echo "=== F. textdb overwrite ==="
-          curl -sS -m 20 -X POST https://textdb.online/update --data-urlencode 'key=probe_cl_A1' --data-urlencode 'value={"a":2}' >/dev/null
-          curl -sS -m 20 https://textdb.online/probe_cl_A1 ; echo
-          echo "PROBE2 DONE"
+          t() { # write $1 bytes of base64-ish payload under key $2, then report readback size
+            python3 -c "import sys; sys.stdout.write('A0b1'*($1//4))" > payload.txt
+            R=$(curl -sS -m 30 -X POST https://textdb.online/update --data-urlencode "key=$2" --data-urlencode value@payload.txt)
+            B=$(curl -sS -m 30 "https://textdb.online/$2" | wc -c)
+            echo "size=$1 resp=$R readback=$B"
+          }
+          echo "=== size limit search ==="
+          t 20000 pcl_s20
+          t 50000 pcl_s50
+          t 80000 pcl_s80
+          t 120000 pcl_s120
+          t 160000 pcl_s160
+          echo "=== uuid-with-hyphens key ==="
+          curl -sS -m 20 -X POST https://textdb.online/update --data-urlencode 'key=019f7dca-3ece-76a0-8453-8d8e5e4131fd-probe' --data-urlencode 'value=uuidkey_ok' ; echo
+          curl -sS -m 20 'https://textdb.online/019f7dca-3ece-76a0-8453-8d8e5e4131fd-probe' ; echo
+          echo "=== korean + json value ==="
+          curl -sS -m 20 -X POST https://textdb.online/update --data-urlencode 'key=pcl_kr' --data-urlencode 'value={"제목":"수업 준비","done":true}' >/dev/null
+          curl -sS -m 20 https://textdb.online/pcl_kr ; echo
+          echo "PROBE3 DONE"
