@@ -148,6 +148,7 @@
     border: 1px solid var(--line); border-radius: 10px; background: var(--card); color: var(--muted);
   }
   .tabs button.active { color: #fff; border-color: transparent; }
+  .tabs button[data-tab="inbox"].active { background: var(--accent); }
   .tabs button[data-tab="c1"].active { background: var(--c1); }
   .tabs button[data-tab="c2"].active { background: var(--c2); }
   .tabs button[data-tab="c3"].active { background: var(--c3); }
@@ -190,6 +191,21 @@
   .icon-btn:hover { color: var(--ink); }
   .empty { text-align: center; color: var(--muted); font-size: 13px; padding: 18px 0; }
   .cat-progress { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+
+  /* ── 오늘 할 일 쏟아내기 (분류 전) ─────── */
+  ul.inbox-list { list-style: none; }
+  ul.inbox-list li {
+    display: flex; flex-direction: column; gap: 6px;
+    padding: 10px 4px; border-bottom: 1px solid var(--line);
+  }
+  ul.inbox-list li:last-child { border-bottom: none; }
+  .inbox-row1 { display: flex; align-items: center; gap: 8px; }
+  .inbox-cats { display: flex; gap: 6px; flex-wrap: wrap; }
+  .cat-pick {
+    border: 1px solid var(--line); background: var(--card); border-radius: 8px;
+    padding: 4px 9px; font-size: 12px; font-weight: 600;
+  }
+  .cat-pick:hover { background: var(--hover-bg); }
 
   /* ── 일정표 ───────────────────────────── */
   .sch-form {
@@ -390,6 +406,7 @@
 <div id="routineBox"></div>
 
 <div class="tabs" id="tabs">
+  <button data-tab="inbox">📝 오늘 할 일</button>
   <button data-tab="c1">1. 수업</button>
   <button data-tab="c2">2. 운영</button>
   <button data-tab="c3">3. 수업자료</button>
@@ -447,7 +464,7 @@
   var todayKey = dateKey(new Date());
   var selectedDate = todayKey;
   var calCursor = new Date();       // 캘린더에 표시 중인 달
-  var activeTab = 'c1';
+  var activeTab = 'inbox';
   var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); };
 
   /* ── 저장/불러오기 ─────────────────────── */
@@ -476,6 +493,7 @@
     if (!state.days[key]) state.days[key] = { todos: [], slots: {} };
     if (!state.days[key].slots) state.days[key].slots = {};
     if (!state.days[key].todos) state.days[key].todos = [];
+    if (!state.days[key].inbox) state.days[key].inbox = [];
     if (!state.days[key].rchecks) state.days[key].rchecks = {};
     return state.days[key];
   }
@@ -556,6 +574,16 @@
           day(todayKey).todos.push({
             id: uid(), cat: t.cat, title: t.title,
             done: false, carried: true, from: key, ts: Date.now()
+          });
+          moved++;
+        }
+      });
+      (state.days[key].inbox || []).forEach(function (t) {
+        if (!t.carriedForward && !t.del) {
+          t.carriedForward = true;
+          t.ts = Date.now();
+          day(todayKey).inbox.push({
+            id: uid(), title: t.title, carried: true, from: key, ts: Date.now()
           });
           moved++;
         }
@@ -741,6 +769,80 @@
       }
     });
     return changed;
+  }
+
+  /* ── 렌더: 오늘 할 일 쏟아내기 (분류 전) ── */
+  function renderInboxPanel() {
+    var panel = document.getElementById('panel');
+    var d = day(selectedDate);
+    var items = d.inbox.filter(function (t) { return !t.del; });
+
+    var catBtns = CAT_KEYS.map(function (k) {
+      return '<button class="cat-pick" data-cat="' + k + '" style="border-color:' + CATS[k].color +
+        ';color:' + CATS[k].color + '">' + CATS[k].name + '</button>';
+    }).join('');
+
+    panel.innerHTML =
+      '<div class="add-row">' +
+      '  <input type="text" id="newInbox" placeholder="오늘 할 일을 생각나는 대로 적어보세요…" maxlength="80">' +
+      '  <button class="add" id="addInbox">추가</button>' +
+      '</div>' +
+      (items.length ? '<div class="cat-progress">' + items.length + '개 · 버튼을 눌러 카테고리로 분류하세요</div>' : '') +
+      '<ul class="inbox-list" id="inboxList"></ul>';
+
+    var list = document.getElementById('inboxList');
+    if (!items.length) {
+      list.innerHTML = '<div class="empty">떠오르는 일을 뭐든 적어보세요. 나중에 카테고리별로 정리하면 됩니다.</div>';
+    } else {
+      items.forEach(function (t) {
+        var li = document.createElement('li');
+        var carryTag = t.carried
+          ? '<span class="tag-carry">↪ ' + (t.from ? t.from.slice(5).replace('-', '/') : '이월') + '</span>' : '';
+        li.innerHTML =
+          '<div class="inbox-row1">' +
+          '<span class="t-title"></span>' + carryTag +
+          '<button class="icon-btn edit" title="수정">✎</button>' +
+          '<button class="icon-btn del" title="삭제">✕</button>' +
+          '</div>' +
+          '<div class="inbox-cats">' + catBtns + '</div>';
+        li.querySelector('.t-title').textContent = t.title;
+        li.querySelectorAll('.cat-pick').forEach(function (btn) {
+          btn.addEventListener('click', function () {
+            var cat = this.dataset.cat;
+            t.del = Date.now();
+            t.ts = Date.now();
+            d.todos.push({ id: uid(), cat: cat, title: t.title, done: false, carried: false, ts: Date.now() });
+            save(); renderAll();
+            toast('「' + t.title + '」 → ' + CATS[cat].name + ' 탭으로 분류');
+          });
+        });
+        li.querySelector('.edit').addEventListener('click', function () {
+          var v = prompt('할 일 수정', t.title);
+          if (v !== null && v.trim()) { t.title = v.trim(); t.ts = Date.now(); save(); renderAll(); }
+        });
+        li.querySelector('.del').addEventListener('click', function () {
+          if (!confirm('「' + t.title + '」 삭제할까요?')) return;
+          t.del = Date.now();
+          t.ts = Date.now();
+          save(); renderAll();
+        });
+        list.appendChild(li);
+      });
+    }
+
+    function addNew() {
+      var inp = document.getElementById('newInbox');
+      var v = inp.value.trim();
+      if (!v) return;
+      d.inbox.push({ id: uid(), title: v, carried: false, ts: Date.now() });
+      save(); renderAll();
+      var again = document.getElementById('newInbox');
+      if (again) again.focus();
+    }
+    document.getElementById('addInbox').addEventListener('click', addNew);
+    document.getElementById('newInbox').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') addNew();
+    });
   }
 
   /* ── 렌더: 카테고리 탭 (1~4) ──────────── */
@@ -1106,6 +1208,7 @@
   }
   function renderPanel() {
     if (activeTab === 'sch') renderSchedule();
+    else if (activeTab === 'inbox') renderInboxPanel();
     else renderCatPanel(activeTab);
   }
   function renderAll() {
@@ -1260,6 +1363,33 @@
       });
     });
   }
+  function mergeItemArray(newerList, olderList, carryKeyFn) {
+    var now = Date.now();
+    var GC_MS = 14 * 24 * 60 * 60 * 1000;
+    var byId = {}, order = [], seenCarry = {};
+    (newerList || []).forEach(function (t) {
+      byId[t.id] = t; order.push(t.id);
+      if (t.carried && !t.del) seenCarry[carryKeyFn(t)] = 1;
+    });
+    (olderList || []).forEach(function (t) {
+      var prev = byId[t.id];
+      if (prev) {
+        // 같은 항목이 양쪽에 있으면 더 최근에 수정(삭제 포함)한 쪽을 채택
+        if ((t.ts || 0) > (prev.ts || 0)) byId[t.id] = t;
+        return;
+      }
+      if (t.carried && !t.del && seenCarry[carryKeyFn(t)]) return;
+      byId[t.id] = t; order.push(t.id);
+      if (t.carried && !t.del) seenCarry[carryKeyFn(t)] = 1;
+    });
+    var out = [];
+    order.forEach(function (id) {
+      var t = byId[id];
+      if (t.del && now - t.del > GC_MS) return; // 오래된 삭제 표식 정리
+      out.push(t);
+    });
+    return out;
+  }
   function mergeStates(local, remote) {
     var lU = (local.meta && local.meta.updatedAt) || 0;
     var rU = (remote.meta && remote.meta.updatedAt) || 0;
@@ -1288,31 +1418,13 @@
     Object.keys(dates).sort().forEach(function (dk) {
       var a = (newer.days || {})[dk], b = (older.days || {})[dk];
       if (!a || !b) { out.days[dk] = JSON.parse(JSON.stringify(a || b)); return; }
-      var merged = { todos: [], slots: {} };
-      var byId = {}, order = [], seenCarry = {};
-      var carryKey = function (t) { return t.cat + '|' + t.title + '|' + (t.from || ''); };
-      (a.todos || []).forEach(function (t) {
-        byId[t.id] = t; order.push(t.id);
-        if (t.carried && !t.del) seenCarry[carryKey(t)] = 1;
-      });
-      (b.todos || []).forEach(function (t) {
-        var prev = byId[t.id];
-        if (prev) {
-          // 같은 항목이 양쪽에 있으면 더 최근에 수정(삭제 포함)한 쪽을 채택
-          if ((t.ts || 0) > (prev.ts || 0)) byId[t.id] = t;
-          return;
-        }
-        if (t.carried && !t.del && seenCarry[carryKey(t)]) return;
-        byId[t.id] = t; order.push(t.id);
-        if (t.carried && !t.del) seenCarry[carryKey(t)] = 1;
-      });
       var now = Date.now();
       var GC_MS = 14 * 24 * 60 * 60 * 1000;
-      order.forEach(function (id) {
-        var t = byId[id];
-        if (t.del && now - t.del > GC_MS) return; // 오래된 삭제 표식 정리
-        merged.todos.push(t);
-      });
+      var merged = {
+        todos: mergeItemArray(a.todos, b.todos, function (t) { return t.cat + '|' + t.title + '|' + (t.from || ''); }),
+        inbox: mergeItemArray(a.inbox, b.inbox, function (t) { return t.title + '|' + (t.from || ''); }),
+        slots: {}
+      };
       // 루틴 체크: 날짜×루틴 단위로 최신 체크가 이김
       var ca = a.rchecks || {}, cb = b.rchecks || {};
       merged.rchecks = {};
