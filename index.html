@@ -1184,6 +1184,19 @@
             if (e.key === 'Escape') { editorMin = null; renderAll(); }
             e.stopPropagation();
           });
+          // 할 일과 이름이 같으면 그 카테고리를 화면에도 바로 보여준다
+          // (지금까지도 배치 시 자동으로 적용은 됐지만, 선택창이 계속
+          // "카테고리 자동"으로만 보여서 아무것도 안 정해진 것처럼 보였다)
+          var catTouchedByUser = false;
+          row.querySelector('#seCat').addEventListener('change', function () {
+            catTouchedByUser = true;
+          });
+          row.querySelector('#seName').addEventListener('input', function () {
+            if (catTouchedByUser) return;
+            var catSel = document.getElementById('seCat');
+            var matched = matchTodoCat(this.value.trim());
+            if (catSel) catSel.value = matched && CATS[matched] ? matched : '';
+          });
         } else {
           row.innerHTML = timeCell + '<div class="slot-body clickable"></div>';
           row.querySelector('.slot-body').addEventListener('click', function () {
