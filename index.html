@@ -18,6 +18,7 @@
     --c4: #9b7cb8; /* 자기계발 */
     --c5: #4fa3a5; /* 일정표 */
     --c6: #bd7a8c; /* 기타 */
+    --c7: #6f6fbf; /* 수업계획 */
     --sel-bg: #eef3ee;
     --carry-ink: #b5651d;
     --carry-bg: #faeede;
@@ -53,6 +54,7 @@
       --slot-c3: #3c342a;
       --slot-c4: #342e3b;
       --slot-c6: #3a2f33;
+      --c7: #9291d6;
     }
   }
   :root[data-theme="light"] {
@@ -61,7 +63,7 @@
     --carry-ink: #b5651d; --carry-bg: #faeede; --slot-bg: #e8f2f2;
     --hover-bg: #f4f7f4; --row-line: #f0ede6; --chip-ink: #ffffff; --sun: #c0564f;
     --slot-c1: #e7eef6; --slot-c2: #e9f1e8; --slot-c3: #f8efe2; --slot-c4: #f0eaf5;
-    --c6: #bd7a8c; --slot-c6: #f6ecef;
+    --c6: #bd7a8c; --slot-c6: #f6ecef; --c7: #6f6fbf;
   }
   :root[data-theme="dark"] {
     --bg: #22211d; --card: #2c2b26; --ink: #e8e5dc; --muted: #9a968b;
@@ -69,7 +71,7 @@
     --carry-ink: #e0a370; --carry-bg: #3d3227; --slot-bg: #2e3a3a;
     --hover-bg: #31352f; --row-line: #34322b; --chip-ink: #22211d; --sun: #d98079;
     --slot-c1: #29323d; --slot-c2: #2c352b; --slot-c3: #3c342a; --slot-c4: #342e3b;
-    --c6: #bd7a8c; --slot-c6: #3a2f33;
+    --c6: #bd7a8c; --slot-c6: #3a2f33; --c7: #9291d6;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -155,6 +157,57 @@
   .tabs button[data-tab="c4"].active { background: var(--c4); }
   .tabs button[data-tab="c6"].active { background: var(--c6); }
   .tabs button[data-tab="sch"].active { background: var(--c5); }
+  .tabs button[data-tab="lec"].active { background: var(--c7); }
+
+  /* ── 수업 계획 ─────────────────────────── */
+  .lec-card {
+    background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--c7);
+    border-radius: 10px; padding: 10px 12px; margin-bottom: 10px;
+  }
+  .lec-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+  .lec-time { font-weight: 700; font-size: 13px; color: var(--ink); }
+  .lec-class {
+    font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 6px;
+    background: var(--c7); color: #fff;
+  }
+  .lec-subject { font-size: 12.5px; color: var(--muted); }
+  .lec-head .icon-btn { margin-left: auto; }
+  .lec-field { font-size: 13px; margin-bottom: 4px; }
+  .lec-field b { color: var(--muted); font-weight: 600; margin-right: 4px; }
+  .lec-prep { list-style: none; margin-top: 4px; }
+  .lec-prep li { display: flex; align-items: center; gap: 6px; padding: 3px 0; font-size: 12.5px; }
+  .lec-prep .t-title.done { text-decoration: line-through; color: var(--muted); }
+  .lec-form {
+    border: 1px dashed var(--c7); border-radius: 10px; background: var(--hover-bg);
+    padding: 10px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 8px;
+  }
+  .lec-form .row2 { display: flex; gap: 6px; }
+  .lec-form .row2 > * { flex: 1; min-width: 0; }
+  .lec-form input, .lec-form textarea, .lec-form select {
+    padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+    font-size: 13px; font-family: inherit; background: var(--card); color: var(--ink); width: 100%;
+  }
+  .lec-form textarea { min-height: 54px; resize: vertical; }
+  .lec-form label { font-size: 11.5px; color: var(--muted); display: block; margin-bottom: 3px; }
+  .lec-form .btn-row { display: flex; gap: 8px; }
+  .lec-form .btn-row button {
+    flex: 1; padding: 9px; border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
+    background: var(--c7); color: #fff;
+  }
+  .lec-form .btn-row button.cancel { background: none; border: 1px solid var(--line); color: var(--muted); font-weight: 400; }
+  .thumb-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 5px; }
+  .thumb { width: 52px; height: 52px; object-fit: cover; border-radius: 7px; border: 1px solid var(--line); cursor: pointer; }
+  .thumb-wrap { position: relative; display: inline-block; }
+  .thumb-remove {
+    position: absolute; top: -5px; right: -5px; width: 17px; height: 17px; border-radius: 50%;
+    background: var(--sun); color: #fff; border: none; font-size: 10px; cursor: pointer; line-height: 1;
+  }
+  .lightbox-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.8); z-index: 30;
+    align-items: center; justify-content: center; padding: 2rem;
+  }
+  .lightbox-overlay.show { display: flex; }
+  .lightbox-img { max-width: 100%; max-height: 100%; border-radius: 8px; }
 
   /* ── 투두 목록 ────────────────────────── */
   .panel { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
@@ -407,6 +460,7 @@
 
 <div class="tabs" id="tabs">
   <button data-tab="inbox">📝 오늘 할 일</button>
+  <button data-tab="lec">📚 수업계획</button>
   <button data-tab="c1">1. 수업</button>
   <button data-tab="c2">2. 운영</button>
   <button data-tab="c3">3. 수업자료</button>
@@ -416,6 +470,7 @@
 </div>
 
 <div class="panel" id="panel"></div>
+<div class="lightbox-overlay" id="lightboxOverlay"></div>
 
 <div class="day-summary">
   <span class="big" id="sumEmoji">🌱</span>
@@ -495,6 +550,7 @@
     if (!state.days[key].todos) state.days[key].todos = [];
     if (!state.days[key].inbox) state.days[key].inbox = [];
     if (!state.days[key].rchecks) state.days[key].rchecks = {};
+    if (!state.days[key].lecturePlans) state.days[key].lecturePlans = [];
     return state.days[key];
   }
 
@@ -1025,8 +1081,8 @@
 
   /* ── 렌더: 일정표 (15분 단위) ─────────── */
   var editorMin = null;
-  function placeActivity(name, start, dur, selCat) {
-    var slots = day(selectedDate).slots;
+  function placeActivity(name, start, dur, selCat, forDate) {
+    var slots = day(forDate || selectedDate).slots;
     if (!name) { toast('활동 이름을 입력해 주세요'); return false; }
     if (start + dur > SLOT_END) { toast('24:00을 넘길 수 없어요'); return false; }
     for (var m2 = start; m2 < start + dur; m2 += STEP) {
@@ -1038,7 +1094,7 @@
       slots[m3] = { name: name, done: false, group: g, cat: cat, ts: Date.now() };
     }
     save();
-    return true;
+    return g;
   }
   function matchTodoCat(name) {
     var todos = day(selectedDate).todos;
@@ -1212,6 +1268,291 @@
     if (seInput) seInput.focus();
   }
 
+  /* ── 수업 계획 (이미지는 기기 로컬 저장, 동기화 대상 아님) ── */
+  var LEC_IMG_KEY = 'todoTracker.lecImages.v1';
+  function loadLecImages() {
+    try {
+      var raw = localStorage.getItem(LEC_IMG_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return {};
+  }
+  function saveLecImages() {
+    try { localStorage.setItem(LEC_IMG_KEY, JSON.stringify(lecImages)); }
+    catch (e) { toast('이미지 저장 공간이 부족해요. 오래된 계획의 이미지를 정리해 주세요.'); }
+  }
+  var lecImages = loadLecImages();
+  function lecImgOf(planId, kind) {
+    return (lecImages[planId] && lecImages[planId][kind]) || [];
+  }
+  function resizeImageFile(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function (e) {
+        var img = new Image();
+        img.onload = function () {
+          var maxDim = 800;
+          var width = img.width, height = img.height;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) { height = Math.round(height * maxDim / width); width = maxDim; }
+            else { width = Math.round(width * maxDim / height); height = maxDim; }
+          }
+          var canvas = document.createElement('canvas');
+          canvas.width = width; canvas.height = height;
+          canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
+        };
+        img.onerror = reject;
+        img.src = e.target.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+  function openLightbox(src) {
+    var ov = document.getElementById('lightboxOverlay');
+    ov.innerHTML = '<img class="lightbox-img" src="' + src + '">';
+    ov.classList.add('show');
+  }
+  document.getElementById('lightboxOverlay').addEventListener('click', function () {
+    this.classList.remove('show'); this.innerHTML = '';
+  });
+  function renderThumbs(images) {
+    if (!images || !images.length) return '';
+    return '<div class="thumb-row">' + images.map(function (img) {
+      return '<img class="thumb" src="' + img.dataUrl + '">';
+    }).join('') + '</div>';
+  }
+
+  /* ── 수업 계획 폼 상태 ─────────────────── */
+  var lecFormOpen = false;
+  var lecFormImages = { textbook: [], material: [] };
+  function roundStep(min) { return Math.round(min / STEP) * STEP; }
+  function timeStrToMin(str) {
+    var p = (str || '').split(':');
+    if (p.length !== 2) return null;
+    var h = +p[0], m = +p[1];
+    if (isNaN(h) || isNaN(m)) return null;
+    return h * 60 + m;
+  }
+  function openLecForm() { lecFormOpen = true; lecFormImages = { textbook: [], material: [] }; renderLecturePanel(); }
+  function cancelLecForm() { lecFormOpen = false; renderLecturePanel(); }
+  function renderLecImgPreview(kind) {
+    var el = document.getElementById('lec' + kind + 'Preview');
+    if (!el) return;
+    el.innerHTML = lecFormImages[kind].map(function (img, i) {
+      return '<div class="thumb-wrap"><img class="thumb" src="' + img.dataUrl + '">' +
+        '<button type="button" class="thumb-remove" data-i="' + i + '">✕</button></div>';
+    }).join('');
+    el.querySelectorAll('.thumb-remove').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        lecFormImages[kind].splice(+this.dataset.i, 1);
+        renderLecImgPreview(kind);
+      });
+    });
+    el.querySelectorAll('.thumb').forEach(function (im) {
+      im.addEventListener('click', function () { openLightbox(this.src); });
+    });
+  }
+  function handleLecImgInput(files, kind) {
+    var list = Array.prototype.slice.call(files);
+    if (!list.length) return;
+    Promise.all(list.map(function (f) {
+      return resizeImageFile(f).then(function (dataUrl) { return { id: uid(), dataUrl: dataUrl, name: f.name }; });
+    })).then(function (imgs) {
+      lecFormImages[kind] = lecFormImages[kind].concat(imgs);
+      renderLecImgPreview(kind);
+    });
+  }
+  function addLecturePlan() {
+    var className = document.getElementById('lecClass').value.trim();
+    var subject = document.getElementById('lecSubject').value.trim();
+    var startStr = document.getElementById('lecStart').value;
+    var endStr = document.getElementById('lecEnd').value;
+    var textbookName = document.getElementById('lecTextbook').value.trim();
+    var materialName = document.getElementById('lecMaterial').value.trim();
+    var prepRaw = document.getElementById('lecPrep').value;
+    var notes = document.getElementById('lecNotes').value.trim();
+
+    if (!className && !subject) { toast('반 또는 과목을 입력해 주세요'); return; }
+    var start = timeStrToMin(startStr), end = timeStrToMin(endStr);
+    if (start === null || end === null) { toast('시작/종료 시간을 입력해 주세요'); return; }
+    if (end <= start) { toast('종료 시간이 시작 시간보다 늦어야 해요'); return; }
+    start = roundStep(Math.max(SLOT_START, start));
+    end = roundStep(Math.min(SLOT_END, end));
+    if (end <= start) { toast('일정표 15분 단위에 맞는 시간 범위를 입력해 주세요'); return; }
+
+    var label = (className ? className : '') + (className && subject ? ' ' : '') + (subject || '수업');
+    var slotGroup = placeActivity(label, start, end - start, 'c1');
+
+    var prepLines = prepRaw.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
+    var todoIds = [];
+    var d = day(selectedDate);
+    prepLines.forEach(function (line) {
+      var title = (className ? '[' + className + '] ' : '') + line;
+      var id = uid();
+      d.todos.push({ id: id, cat: 'c3', title: title, done: false, carried: false, ts: Date.now() });
+      todoIds.push(id);
+    });
+
+    var planId = uid();
+    d.lecturePlans.push({
+      id: planId, className: className, subject: subject, start: start, end: end,
+      textbookName: textbookName, materialName: materialName, notes: notes,
+      todoIds: todoIds, slotGroup: slotGroup || null, ts: Date.now()
+    });
+
+    if (lecFormImages.textbook.length || lecFormImages.material.length) {
+      lecImages[planId] = { textbook: lecFormImages.textbook, material: lecFormImages.material };
+      saveLecImages();
+    }
+
+    save();
+    lecFormOpen = false;
+    toast('수업 계획을 추가했어요' + (prepLines.length ? ' · 준비할 일 ' + prepLines.length + '개를 수업자료 탭에 넣었어요' : '') +
+      (slotGroup ? '' : ' · 일정표 자리가 겹쳐 일정 배치는 건너뛰었어요'));
+    renderAll();
+  }
+  function deleteLecturePlan(id) {
+    var d = day(selectedDate);
+    var plan = d.lecturePlans.find(function (p) { return p.id === id; });
+    if (!plan) return;
+    if (!confirm('이 수업 계획을 삭제할까요?\n연결된 일정표 블록과 준비할 일도 함께 삭제됩니다.')) return;
+
+    if (plan.slotGroup) {
+      Object.keys(d.slots).forEach(function (m) {
+        var sl = d.slots[m];
+        if (!sl.del && sl.group === plan.slotGroup) {
+          if (sl.done) addPoints(-POINT_SLOT);
+          d.slots[m] = { del: Date.now(), ts: Date.now() };
+        }
+      });
+    }
+    (plan.todoIds || []).forEach(function (tid) {
+      var t = d.todos.find(function (x) { return x.id === tid; });
+      if (t && !t.del) {
+        if (t.done) addPoints(-POINT_TODO);
+        t.del = Date.now(); t.ts = Date.now();
+      }
+    });
+    plan.del = Date.now(); plan.ts = Date.now();
+    delete lecImages[id];
+    saveLecImages();
+    save();
+    renderAll();
+  }
+  function renderLecturePanel() {
+    var panel = document.getElementById('panel');
+    var d = day(selectedDate);
+    var plans = d.lecturePlans.filter(function (p) { return !p.del; }).sort(function (a, b) { return a.start - b.start; });
+
+    var formHtml = '';
+    if (lecFormOpen) {
+      formHtml =
+        '<div class="lec-form">' +
+        '<div class="row2"><div><label>반</label><input type="text" id="lecClass" placeholder="예: 중2 수요반" maxlength="30"></div>' +
+        '<div><label>과목</label><input type="text" id="lecSubject" placeholder="예: 영어 독해" maxlength="30"></div></div>' +
+        '<div class="row2"><div><label>시작</label><input type="time" id="lecStart" step="900" value="16:00"></div>' +
+        '<div><label>종료</label><input type="time" id="lecEnd" step="900" value="17:00"></div></div>' +
+        '<div><label>📘 교재명</label><input type="text" id="lecTextbook" placeholder="예: 리딩튜터 기본"></div>' +
+        '<div><input type="file" id="lecTextbookImg" accept="image/*" multiple style="display:none">' +
+        '<button type="button" class="add" id="lecTextbookImgBtn" style="padding:6px 10px;font-size:12px;">🖼️ 교재 이미지</button>' +
+        '<div class="thumb-row" id="lectextbookPreview"></div></div>' +
+        '<div><label>🗂 자료명</label><input type="text" id="lecMaterial" placeholder="예: 8월 1주차 프린트"></div>' +
+        '<div><input type="file" id="lecMaterialImg" accept="image/*" multiple style="display:none">' +
+        '<button type="button" class="add" id="lecMaterialImgBtn" style="padding:6px 10px;font-size:12px;">🖼️ 자료 이미지</button>' +
+        '<div class="thumb-row" id="lecmaterialPreview"></div></div>' +
+        '<div><label>준비할 일 (한 줄에 하나씩 — 수업자료 탭 할 일로 추가돼요)</label>' +
+        '<textarea id="lecPrep" placeholder="프린트 20장 준비&#10;워크북 3과 채점"></textarea></div>' +
+        '<div><label>메모</label><textarea id="lecNotes" placeholder="특이사항 등"></textarea></div>' +
+        '<div class="btn-row"><button id="lecSave">💾 저장</button><button class="cancel" id="lecCancel">취소</button></div>' +
+        '</div>';
+    }
+
+    panel.innerHTML =
+      (lecFormOpen ? '' : '<div class="add-row"><button class="add" id="lecAddBtn" style="width:100%;">➕ 수업 계획 추가</button></div>') +
+      formHtml +
+      '<div id="lecList"></div>';
+
+    if (lecFormOpen) {
+      document.getElementById('lecSave').addEventListener('click', addLecturePlan);
+      document.getElementById('lecCancel').addEventListener('click', cancelLecForm);
+      document.getElementById('lecTextbookImgBtn').addEventListener('click', function () {
+        document.getElementById('lecTextbookImg').click();
+      });
+      document.getElementById('lecMaterialImgBtn').addEventListener('click', function () {
+        document.getElementById('lecMaterialImg').click();
+      });
+      document.getElementById('lecTextbookImg').addEventListener('change', function () {
+        handleLecImgInput(this.files, 'textbook'); this.value = '';
+      });
+      document.getElementById('lecMaterialImg').addEventListener('change', function () {
+        handleLecImgInput(this.files, 'material'); this.value = '';
+      });
+      renderLecImgPreview('textbook');
+      renderLecImgPreview('material');
+    } else {
+      document.getElementById('lecAddBtn').addEventListener('click', openLecForm);
+    }
+
+    var list = document.getElementById('lecList');
+    if (!plans.length) {
+      list.innerHTML = '<div class="empty">등록된 수업 계획이 없어요. 위 버튼으로 추가해 보세요.<br>추가하면 일정표에 자리가 잡히고, 준비할 일은 수업자료 탭에 할 일로 들어가요.</div>';
+      return;
+    }
+    list.innerHTML = '';
+    plans.forEach(function (p) {
+      var card = document.createElement('div');
+      card.className = 'lec-card';
+      var textbookImgs = lecImgOf(p.id, 'textbook');
+      var materialImgs = lecImgOf(p.id, 'material');
+      var prepTodos = (p.todoIds || []).map(function (tid) {
+        return d.todos.find(function (t) { return t.id === tid && !t.del; });
+      }).filter(Boolean);
+      card.innerHTML =
+        '<div class="lec-head">' +
+        '<span class="lec-time">' + minToHM(p.start) + '–' + minToHM(p.end) + '</span>' +
+        (p.className ? '<span class="lec-class"></span>' : '') +
+        (p.subject ? '<span class="lec-subject"></span>' : '') +
+        '<button class="icon-btn del" title="삭제">✕</button>' +
+        '</div>' +
+        '<div class="lec-field"><b>📘 교재</b><span class="tb-name"></span></div>' +
+        '<div class="lec-field"><b>🗂 자료</b><span class="mt-name"></span></div>' +
+        (p.notes ? '<div class="lec-field"><b>💬 메모</b><span class="notes-text"></span></div>' : '') +
+        (prepTodos.length ? '<ul class="lec-prep"></ul>' : '');
+      if (p.className) card.querySelector('.lec-class').textContent = p.className;
+      if (p.subject) card.querySelector('.lec-subject').textContent = p.subject;
+      card.querySelector('.tb-name').textContent = p.textbookName || '-';
+      card.querySelector('.mt-name').textContent = p.materialName || '-';
+      if (p.notes) card.querySelector('.notes-text').textContent = p.notes;
+      var tbField = card.querySelectorAll('.lec-field')[0];
+      if (textbookImgs.length) tbField.insertAdjacentHTML('beforeend', renderThumbs(textbookImgs));
+      var mtField = card.querySelectorAll('.lec-field')[1];
+      if (materialImgs.length) mtField.insertAdjacentHTML('beforeend', renderThumbs(materialImgs));
+      card.querySelectorAll('.thumb').forEach(function (im) {
+        im.addEventListener('click', function () { openLightbox(this.src); });
+      });
+      if (prepTodos.length) {
+        var ul = card.querySelector('.lec-prep');
+        prepTodos.forEach(function (t) {
+          var li = document.createElement('li');
+          li.innerHTML = '<button class="chk' + (t.done ? ' on' : '') + '" style="width:18px;height:18px;font-size:10px;">' +
+            (t.done ? '✓' : '') + '</button><span class="t-title' + (t.done ? ' done' : '') + '"></span>';
+          li.querySelector('.t-title').textContent = t.title;
+          li.querySelector('.chk').addEventListener('click', function () {
+            t.done = !t.done; t.ts = Date.now();
+            addPoints(t.done ? POINT_TODO : -POINT_TODO, null);
+            syncSlotsWithTodo(t);
+            save(); renderAll();
+          });
+          ul.appendChild(li);
+        });
+      }
+      card.querySelector('.del').addEventListener('click', function () { deleteLecturePlan(p.id); });
+      list.appendChild(card);
+    });
+  }
+
   /* ── 렌더: 탭/전체 ────────────────────── */
   function renderTabs() {
     var btns = document.querySelectorAll('#tabs button');
@@ -1222,6 +1563,7 @@
   function renderPanel() {
     if (activeTab === 'sch') renderSchedule();
     else if (activeTab === 'inbox') renderInboxPanel();
+    else if (activeTab === 'lec') renderLecturePanel();
     else renderCatPanel(activeTab);
   }
   function renderAll() {
@@ -1436,6 +1778,7 @@
       var merged = {
         todos: mergeItemArray(a.todos, b.todos, function (t) { return t.cat + '|' + t.title + '|' + (t.from || ''); }),
         inbox: mergeItemArray(a.inbox, b.inbox, function (t) { return t.title + '|' + (t.from || ''); }),
+        lecturePlans: mergeItemArray(a.lecturePlans, b.lecturePlans, function (t) { return (t.className || '') + '|' + (t.subject || '') + '|' + t.start; }),
         slots: {}
       };
       // 루틴 체크: 날짜×루틴 단위로 최신 체크가 이김
