@@ -1383,11 +1383,16 @@
     if (end <= start) { toast('일정표 15분 단위에 맞는 시간 범위를 입력해 주세요'); return; }
 
     var label = (className ? className : '') + (className && subject ? ' ' : '') + (subject || '수업');
+    var d = day(selectedDate);
+
+    // "1. 수업" 탭에 같은 이름의 할 일을 만들어 두면, 앱 기존의 할 일↔일정표 연동
+    // (syncSlotsWithTodo)이 이름으로 매칭되기 때문에 수업 탭 체크 ↔ 일정표 블록이 자동으로 이어진다.
+    var classTodoId = uid();
+    d.todos.push({ id: classTodoId, cat: 'c1', title: label, done: false, carried: false, ts: Date.now() });
     var slotGroup = placeActivity(label, start, end - start, 'c1');
 
     var prepLines = prepRaw.split('\n').map(function (s) { return s.trim(); }).filter(Boolean);
     var todoIds = [];
-    var d = day(selectedDate);
     prepLines.forEach(function (line) {
       var title = (className ? '[' + className + '] ' : '') + line;
       var id = uid();
@@ -1399,7 +1404,7 @@
     d.lecturePlans.push({
       id: planId, className: className, subject: subject, start: start, end: end,
       textbookName: textbookName, materialName: materialName, notes: notes,
-      todoIds: todoIds, slotGroup: slotGroup || null, ts: Date.now()
+      classTodoId: classTodoId, todoIds: todoIds, slotGroup: slotGroup || null, ts: Date.now()
     });
 
     if (lecFormImages.textbook.length || lecFormImages.material.length) {
@@ -1428,7 +1433,9 @@
         }
       });
     }
-    (plan.todoIds || []).forEach(function (tid) {
+    var allTodoIds = (plan.todoIds || []).slice();
+    if (plan.classTodoId) allTodoIds.push(plan.classTodoId);
+    allTodoIds.forEach(function (tid) {
       var t = d.todos.find(function (x) { return x.id === tid; });
       if (t && !t.del) {
         if (t.done) addPoints(-POINT_TODO);
@@ -1509,8 +1516,10 @@
       var prepTodos = (p.todoIds || []).map(function (tid) {
         return d.todos.find(function (t) { return t.id === tid && !t.del; });
       }).filter(Boolean);
+      var classTodo = p.classTodoId ? d.todos.find(function (t) { return t.id === p.classTodoId && !t.del; }) : null;
       card.innerHTML =
         '<div class="lec-head">' +
+        (classTodo ? '<button class="chk' + (classTodo.done ? ' on' : '') + '" title="수업 완료 · 1.수업 탭·일정표와 연동됨">' + (classTodo.done ? '✓' : '') + '</button>' : '') +
         '<span class="lec-time">' + minToHM(p.start) + '–' + minToHM(p.end) + '</span>' +
         (p.className ? '<span class="lec-class"></span>' : '') +
         (p.subject ? '<span class="lec-subject"></span>' : '') +
@@ -1532,6 +1541,14 @@
       card.querySelectorAll('.thumb').forEach(function (im) {
         im.addEventListener('click', function () { openLightbox(this.src); });
       });
+      if (classTodo) {
+        card.querySelector('.lec-head .chk').addEventListener('click', function () {
+          classTodo.done = !classTodo.done; classTodo.ts = Date.now();
+          addPoints(classTodo.done ? POINT_TODO : -POINT_TODO, null);
+          syncSlotsWithTodo(classTodo);
+          save(); renderAll();
+        });
+      }
       if (prepTodos.length) {
         var ul = card.querySelector('.lec-prep');
         prepTodos.forEach(function (t) {
