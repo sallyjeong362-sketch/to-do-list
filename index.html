@@ -202,6 +202,13 @@
     position: absolute; top: -5px; right: -5px; width: 17px; height: 17px; border-radius: 50%;
     background: var(--sun); color: #fff; border: none; font-size: 10px; cursor: pointer; line-height: 1;
   }
+  .file-chip {
+    width: 52px; height: 52px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+    padding: 3px; cursor: pointer; text-align: center;
+  }
+  .file-chip-icon { font-size: 17px; line-height: 1; }
+  .file-chip-name { font-size: 7.5px; color: var(--muted); line-height: 1.1; word-break: break-all; overflow: hidden; max-height: 2em; }
   .lightbox-overlay {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,.8); z-index: 30;
     align-items: center; justify-content: center; padding: 2rem;
@@ -1268,7 +1275,7 @@
     if (seInput) seInput.focus();
   }
 
-  /* ── 수업 계획 (이미지는 기기 로컬 저장, 동기화 대상 아님) ── */
+  /* ── 수업 계획 (첨부파일은 기기 로컬 저장, 동기화 대상 아님) ── */
   var LEC_IMG_KEY = 'todoTracker.lecImages.v1';
   function loadLecImages() {
     try {
@@ -1279,16 +1286,33 @@
   }
   function saveLecImages() {
     try { localStorage.setItem(LEC_IMG_KEY, JSON.stringify(lecImages)); }
-    catch (e) { toast('이미지 저장 공간이 부족해요. 오래된 계획의 이미지를 정리해 주세요.'); }
+    catch (e) { toast('첨부파일 저장 공간이 부족해요. 오래된 계획의 첨부파일을 정리해 주세요.'); }
   }
   var lecImages = loadLecImages();
   function lecImgOf(planId, kind) {
     return (lecImages[planId] && lecImages[planId][kind]) || [];
   }
-  function resizeImageFile(file) {
+  function isImageAttachment(a) {
+    return (a.mime || '').indexOf('image/') === 0 || (!a.mime && a.dataUrl.indexOf('data:image/') === 0);
+  }
+  function fileIconFor(name, mime) {
+    var ext = (name || '').split('.').pop().toLowerCase();
+    if (mime === 'application/pdf' || ext === 'pdf') return '📕';
+    if (['doc', 'docx', 'hwp', 'hwpx'].indexOf(ext) > -1) return '📝';
+    if (['ppt', 'pptx'].indexOf(ext) > -1) return '📊';
+    if (['xls', 'xlsx', 'csv'].indexOf(ext) > -1) return '📈';
+    return '📎';
+  }
+  var MAX_DOC_BYTES = 4 * 1024 * 1024; // 이미지가 아닌 파일은 리사이즈로 줄일 수 없어 크기를 제한
+  function readAttachmentDataUrl(file) {
+    var isImg = file.type.indexOf('image/') === 0;
+    if (!isImg && file.size > MAX_DOC_BYTES) {
+      return Promise.reject(new Error('"' + file.name + '" 파일이 너무 커요 (최대 4MB). 이미지는 자동으로 압축되지만 문서 파일은 원본 그대로 저장돼요.'));
+    }
     return new Promise(function (resolve, reject) {
       var reader = new FileReader();
       reader.onload = function (e) {
+        if (!isImg) { resolve(e.target.result); return; }
         var img = new Image();
         img.onload = function () {
           var maxDim = 800;
@@ -1317,11 +1341,38 @@
   document.getElementById('lightboxOverlay').addEventListener('click', function () {
     this.classList.remove('show'); this.innerHTML = '';
   });
+  function downloadAttachment(a) {
+    var link = document.createElement('a');
+    link.href = a.dataUrl;
+    link.download = a.name || '파일';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
   function renderThumbs(images) {
     if (!images || !images.length) return '';
-    return '<div class="thumb-row">' + images.map(function (img) {
-      return '<img class="thumb" src="' + img.dataUrl + '">';
+    return '<div class="thumb-row">' + images.map(function (img, i) {
+      return isImageAttachment(img)
+        ? '<img class="thumb" data-i="' + i + '">'
+        : '<div class="file-chip" data-i="' + i + '"><span class="file-chip-icon"></span><span class="file-chip-name"></span></div>';
     }).join('') + '</div>';
+  }
+  // renderThumbs()로 넣은 HTML에 실제 src/파일명/클릭 동작을 연결한다.
+  // (파일명을 innerHTML 문자열에 직접 끼워넣지 않고 textContent로만 채워 넣어 이스케이프 문제를 피한다)
+  function wireAttachmentEls(container, images) {
+    container.querySelectorAll('.thumb').forEach(function (el) {
+      var img = images[+el.dataset.i];
+      el.src = img.dataUrl;
+      el.title = img.name || '';
+      el.addEventListener('click', function () { openLightbox(img.dataUrl); });
+    });
+    container.querySelectorAll('.file-chip').forEach(function (el) {
+      var img = images[+el.dataset.i];
+      el.title = img.name || '';
+      el.querySelector('.file-chip-icon').textContent = fileIconFor(img.name, img.mime);
+      el.querySelector('.file-chip-name').textContent = (img.name || '파일').slice(0, 14);
+      el.addEventListener('click', function () { downloadAttachment(img); });
+    });
   }
 
   /* ── 수업 계획 폼 상태 ─────────────────── */
@@ -1340,9 +1391,12 @@
   function renderLecImgPreview(kind) {
     var el = document.getElementById('lec' + kind + 'Preview');
     if (!el) return;
-    el.innerHTML = lecFormImages[kind].map(function (img, i) {
-      return '<div class="thumb-wrap"><img class="thumb" src="' + img.dataUrl + '">' +
-        '<button type="button" class="thumb-remove" data-i="' + i + '">✕</button></div>';
+    var images = lecFormImages[kind];
+    el.innerHTML = images.map(function (img, i) {
+      var inner = isImageAttachment(img)
+        ? '<img class="thumb" data-i="' + i + '">'
+        : '<div class="file-chip" data-i="' + i + '"><span class="file-chip-icon"></span><span class="file-chip-name"></span></div>';
+      return '<div class="thumb-wrap">' + inner + '<button type="button" class="thumb-remove" data-i="' + i + '">✕</button></div>';
     }).join('');
     el.querySelectorAll('.thumb-remove').forEach(function (btn) {
       btn.addEventListener('click', function () {
@@ -1350,18 +1404,19 @@
         renderLecImgPreview(kind);
       });
     });
-    el.querySelectorAll('.thumb').forEach(function (im) {
-      im.addEventListener('click', function () { openLightbox(this.src); });
-    });
+    wireAttachmentEls(el, images);
   }
   function handleLecImgInput(files, kind) {
     var list = Array.prototype.slice.call(files);
     if (!list.length) return;
-    Promise.all(list.map(function (f) {
-      return resizeImageFile(f).then(function (dataUrl) { return { id: uid(), dataUrl: dataUrl, name: f.name }; });
-    })).then(function (imgs) {
-      lecFormImages[kind] = lecFormImages[kind].concat(imgs);
+    Promise.allSettled(list.map(function (f) {
+      return readAttachmentDataUrl(f).then(function (dataUrl) { return { id: uid(), dataUrl: dataUrl, name: f.name, mime: f.type || '' }; });
+    })).then(function (results) {
+      var ok = results.filter(function (r) { return r.status === 'fulfilled'; }).map(function (r) { return r.value; });
+      var failed = results.filter(function (r) { return r.status === 'rejected'; });
+      lecFormImages[kind] = lecFormImages[kind].concat(ok);
       renderLecImgPreview(kind);
+      if (failed.length) alert(failed.map(function (r) { return r.reason.message; }).join('\n'));
     });
   }
   function addLecturePlan() {
@@ -1462,12 +1517,12 @@
         '<div class="row2"><div><label>시작</label><input type="time" id="lecStart" step="900" value="16:00"></div>' +
         '<div><label>종료</label><input type="time" id="lecEnd" step="900" value="17:00"></div></div>' +
         '<div><label>📘 교재명</label><input type="text" id="lecTextbook" placeholder="예: 리딩튜터 기본"></div>' +
-        '<div><input type="file" id="lecTextbookImg" accept="image/*" multiple style="display:none">' +
-        '<button type="button" class="add" id="lecTextbookImgBtn" style="padding:6px 10px;font-size:12px;">🖼️ 교재 이미지</button>' +
+        '<div><input type="file" id="lecTextbookImg" accept="image/*,.pdf,.doc,.docx,.hwp,.hwpx,.ppt,.pptx,.xls,.xlsx,.txt" multiple style="display:none">' +
+        '<button type="button" class="add" id="lecTextbookImgBtn" style="padding:6px 10px;font-size:12px;">📎 교재 파일</button>' +
         '<div class="thumb-row" id="lectextbookPreview"></div></div>' +
         '<div><label>🗂 자료명</label><input type="text" id="lecMaterial" placeholder="예: 8월 1주차 프린트"></div>' +
-        '<div><input type="file" id="lecMaterialImg" accept="image/*" multiple style="display:none">' +
-        '<button type="button" class="add" id="lecMaterialImgBtn" style="padding:6px 10px;font-size:12px;">🖼️ 자료 이미지</button>' +
+        '<div><input type="file" id="lecMaterialImg" accept="image/*,.pdf,.doc,.docx,.hwp,.hwpx,.ppt,.pptx,.xls,.xlsx,.txt" multiple style="display:none">' +
+        '<button type="button" class="add" id="lecMaterialImgBtn" style="padding:6px 10px;font-size:12px;">📎 자료 파일</button>' +
         '<div class="thumb-row" id="lecmaterialPreview"></div></div>' +
         '<div><label>준비할 일 (한 줄에 하나씩 — 수업자료 탭 할 일로 추가돼요)</label>' +
         '<textarea id="lecPrep" placeholder="프린트 20장 준비&#10;워크북 3과 채점"></textarea></div>' +
@@ -1535,12 +1590,9 @@
       card.querySelector('.mt-name').textContent = p.materialName || '-';
       if (p.notes) card.querySelector('.notes-text').textContent = p.notes;
       var tbField = card.querySelectorAll('.lec-field')[0];
-      if (textbookImgs.length) tbField.insertAdjacentHTML('beforeend', renderThumbs(textbookImgs));
+      if (textbookImgs.length) { tbField.insertAdjacentHTML('beforeend', renderThumbs(textbookImgs)); wireAttachmentEls(tbField, textbookImgs); }
       var mtField = card.querySelectorAll('.lec-field')[1];
-      if (materialImgs.length) mtField.insertAdjacentHTML('beforeend', renderThumbs(materialImgs));
-      card.querySelectorAll('.thumb').forEach(function (im) {
-        im.addEventListener('click', function () { openLightbox(this.src); });
-      });
+      if (materialImgs.length) { mtField.insertAdjacentHTML('beforeend', renderThumbs(materialImgs)); wireAttachmentEls(mtField, materialImgs); }
       if (classTodo) {
         card.querySelector('.lec-head .chk').addEventListener('click', function () {
           classTodo.done = !classTodo.done; classTodo.ts = Date.now();
