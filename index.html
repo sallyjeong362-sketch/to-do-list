@@ -873,21 +873,49 @@
     return advanceChkStatus(t, POINT_TODO);
   }
 
-  /* ── 할 일 ↔ 일정표 블록 연동 ─────────── */
+  /* ── 할 일 ↔ 일정표 블록 연동 (양방향, 4단계 전체를 그대로 미러링) ── */
+  // 완료 여부(boolean)만이 아니라 미착수/진행중/완료/오늘 못함 상태값 자체를
+  // 그대로 옮겨 적기 때문에, 어느 쪽에서 상태를 바꾸든 같은 이름을 쓰는
+  // 모든 곳(할 일·수업 계획·일정표 블록)이 항상 같은 상태로 맞춰진다.
+  function mirrorStatus(obj, newStatus, pointValue) {
+    var was2 = obj.status === 2;
+    obj.status = newStatus;
+    obj.done = newStatus === 2;
+    obj.ts = Date.now();
+    if (newStatus === 2 && !was2) addPoints(pointValue, null);
+    else if (newStatus !== 2 && was2) addPoints(-pointValue, null);
+  }
+  // 할 일(카테고리 탭·수업 계획) → 같은 이름의 일정표 블록들
   function syncSlotsWithTodo(t) {
     var slots = day(selectedDate).slots;
     var changed = 0;
     Object.keys(slots).forEach(function (k) {
       var sl = slots[k];
-      if (!sl.del && sl.name === t.title && sl.done !== t.done) {
-        sl.status = t.done ? 2 : 0;
-        sl.done = t.done;
-        sl.ts = Date.now();
-        addPoints(t.done ? POINT_SLOT : -POINT_SLOT);
+      if (!sl.del && sl.name === t.title && sl.status !== t.status) {
+        mirrorStatus(sl, t.status, POINT_SLOT);
         changed++;
       }
     });
     return changed;
+  }
+  // 일정표 블록 → 같은 이름을 쓰는 다른 블록들 + 같은 제목의 할 일(들)
+  function syncTodoAndSlotsWithSlot(s) {
+    var d = day(selectedDate);
+    var todoChanged = 0, slotChanged = 0;
+    d.todos.forEach(function (t) {
+      if (!t.del && t.title === s.name && t.status !== s.status) {
+        mirrorStatus(t, s.status, POINT_TODO);
+        todoChanged++;
+      }
+    });
+    Object.keys(d.slots).forEach(function (k) {
+      var sl = d.slots[k];
+      if (sl !== s && !sl.del && sl.name === s.name && sl.status !== s.status) {
+        mirrorStatus(sl, s.status, POINT_SLOT);
+        slotChanged++;
+      }
+    });
+    return { todoChanged: todoChanged, slotChanged: slotChanged };
   }
 
   /* ── 렌더: 오늘 할 일 쏟아내기 (분류 전) ── */
@@ -1077,22 +1105,42 @@
     if (!slotDrag) return;
     var moved = slotDrag.moved;
     var startMin = slotDrag.startMin;
-    var n = slotDrag.changed.length;
+    var changedMins = slotDrag.changed.slice();
+    var n = changedMins.length;
     var target = slotDrag.target;
     slotDrag = null;
     slotDragEndAt = Date.now();
     if (moved) {
       if (n) {
         addPoints(target ? n * POINT_SLOT : -n * POINT_SLOT, null);
-        toast(target ? '15분 블록 ' + n + '개 완료! +' + (n * POINT_SLOT) + 'P'
-                     : '15분 블록 ' + n + '개 체크 해제');
+        var daySlots = day(selectedDate).slots;
+        var seenNames = {};
+        var extraTodo = 0, extraSlot = 0;
+        changedMins.forEach(function (m) {
+          var sl = daySlots[m];
+          if (!sl || sl.del || seenNames[sl.name]) return;
+          seenNames[sl.name] = true;
+          var sync = syncTodoAndSlotsWithSlot(sl);
+          extraTodo += sync.todoChanged;
+          extraSlot += sync.slotChanged;
+        });
+        var extraCount = extraTodo + extraSlot;
+        var extraPts = extraTodo * POINT_TODO + extraSlot * POINT_SLOT;
+        toast(target
+          ? '15분 블록 ' + n + '개 완료' + (extraCount ? ' · 연동 항목 ' + extraCount + '개도 완료' : '') + '! +' + (n * POINT_SLOT + extraPts) + 'P'
+          : '15분 블록 ' + n + '개 체크 해제' + (extraCount ? ' · 연동 항목 ' + extraCount + '개도 해제' : ''));
         save();
       }
     } else {
       var sl = day(selectedDate).slots[startMin];
       if (sl && !sl.del) {
         var r = advanceSlotStatus(sl);
-        if (r.now2 && !r.was2) toast('15분 실천! +' + POINT_SLOT + 'P');
+        var sync2 = syncTodoAndSlotsWithSlot(sl);
+        if (r.now2 && !r.was2) {
+          var extraCount2 = sync2.todoChanged + sync2.slotChanged;
+          var extraPts2 = sync2.todoChanged * POINT_TODO + sync2.slotChanged * POINT_SLOT;
+          toast(extraCount2 ? '15분 실천! 연동 항목도 함께 완료 +' + (POINT_SLOT + extraPts2) + 'P' : '15분 실천! +' + POINT_SLOT + 'P');
+        }
         save();
       }
     }
@@ -1286,7 +1334,12 @@
           chk.addEventListener('click', function () {
             if (Date.now() - slotDragEndAt < 400) return;
             var r = advanceSlotStatus(s);
-            if (r.now2 && !r.was2) toast('15분 실천! +' + POINT_SLOT + 'P');
+            var sync = syncTodoAndSlotsWithSlot(s);
+            if (r.now2 && !r.was2) {
+              var extraCount = sync.todoChanged + sync.slotChanged;
+              var extraPts = sync.todoChanged * POINT_TODO + sync.slotChanged * POINT_SLOT;
+              toast(extraCount ? '15분 실천! 연동 항목도 함께 완료 +' + (POINT_SLOT + extraPts) + 'P' : '15분 실천! +' + POINT_SLOT + 'P');
+            }
             save(); renderAll();
           });
           row.querySelector('.del').addEventListener('click', function () {
