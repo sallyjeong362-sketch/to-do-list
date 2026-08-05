@@ -546,11 +546,15 @@
     } catch (e) {}
     return { days: {}, meta: { points: 0 }, routines: [] };
   }
-  // 기존 done(true/false) 데이터를 status(0=미착수/1=진행중/2=완료) 3단계로 변환
+  // 기존 done(true/false) 데이터를 status(0=미착수/1=진행중/2=완료/3=오늘 못함)로 변환
   function migrateTodoStatus(s) {
     Object.keys(s.days || {}).forEach(function (key) {
       (s.days[key].todos || []).forEach(function (t) {
         if (typeof t.status !== 'number') t.status = t.done ? 2 : 0;
+      });
+      var checks = s.days[key].rchecks || {};
+      Object.keys(checks).forEach(function (id) {
+        if (typeof checks[id].status !== 'number') checks[id].status = checks[id].done ? 2 : 0;
       });
     });
   }
@@ -763,7 +767,7 @@
     var rs = activeRoutines(selectedDate);
     var d = day(selectedDate);
     var checks = d.rchecks;
-    var doneN = rs.filter(function (r) { return checks[r.id] && checks[r.id].done; }).length;
+    var doneN = rs.filter(function (r) { return checks[r.id] && checks[r.id].status === 2; }).length;
     var open = localStorage.getItem('todoTracker.ui.routineOpen') !== '0';
 
     var html = '<div class="r-card"><div class="r-head">' +
@@ -789,18 +793,20 @@
 
     var list = document.getElementById('rList');
     rs.forEach(function (r) {
-      var chk = checks[r.id] && checks[r.id].done;
+      var rc = checks[r.id] || { status: 0 };
       var li = document.createElement('li');
       li.innerHTML =
-        '<button class="chk' + (chk ? ' on' : '') + '">' + (chk ? '✓' : '') + '</button>' +
-        '<span class="r-title' + (chk ? ' done' : '') + '"></span>' +
+        '<button class="chk' + todoChkClass(rc) + '" title="' + TODO_CHK_TITLE + '">' + todoChkGlyph(rc) + '</button>' +
+        '<span class="r-title' + (rc.status === 2 ? ' done' : '') + '"></span>' +
         '<button class="icon-btn edit" title="수정">✎</button>' +
         '<button class="icon-btn del" title="삭제">✕</button>';
       li.querySelector('.r-title').textContent = r.title;
       li.querySelector('.chk').addEventListener('click', function () {
-        var now = !(checks[r.id] && checks[r.id].done);
-        checks[r.id] = { done: now, ts: Date.now() };
-        addPoints(now ? POINT_ROUTINE : -POINT_ROUTINE, now ? '루틴 실천!' : null);
+        var was2 = rc.status === 2;
+        var nextStatus = ((rc.status || 0) + 1) % 4;
+        checks[r.id] = { status: nextStatus, done: nextStatus === 2, ts: Date.now() };
+        if (nextStatus === 2 && !was2) addPoints(POINT_ROUTINE, '루틴 실천!');
+        else if (nextStatus !== 2 && was2) addPoints(-POINT_ROUTINE, null);
         save(); renderAll();
       });
       li.querySelector('.edit').addEventListener('click', function () {
