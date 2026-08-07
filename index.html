@@ -898,24 +898,20 @@
     });
     return changed;
   }
-  // 일정표 블록 → 같은 이름을 쓰는 다른 블록들 + 같은 제목의 할 일(들)
+  // 일정표 블록 → 같은 제목의 할 일(카테고리 탭·수업 계획)
+  // 한 활동이 여러 15분 칸에 걸쳐 있어도(같은 이름을 공유) 그 칸들끼리는
+  // 서로 전파하지 않는다 — 각 15분 칸은 항상 따로 체크할 수 있어야 하고,
+  // 여러 칸을 한꺼번에 바꾸고 싶을 때는 드래그를 쓴다.
   function syncTodoAndSlotsWithSlot(s) {
     var d = day(selectedDate);
-    var todoChanged = 0, slotChanged = 0;
+    var todoChanged = 0;
     d.todos.forEach(function (t) {
       if (!t.del && t.title === s.name && t.status !== s.status) {
         mirrorStatus(t, s.status, POINT_TODO);
         todoChanged++;
       }
     });
-    Object.keys(d.slots).forEach(function (k) {
-      var sl = d.slots[k];
-      if (sl !== s && !sl.del && sl.name === s.name && sl.status !== s.status) {
-        mirrorStatus(sl, s.status, POINT_SLOT);
-        slotChanged++;
-      }
-    });
-    return { todoChanged: todoChanged, slotChanged: slotChanged };
+    return { todoChanged: todoChanged, slotChanged: 0 };
   }
 
   /* ── 렌더: 오늘 할 일 쏟아내기 (분류 전) ── */
