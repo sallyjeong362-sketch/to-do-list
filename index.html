@@ -251,6 +251,12 @@
     padding: 4px; flex: none;
   }
   .icon-btn:hover { color: var(--ink); }
+  .drag-handle {
+    border: none; background: none; color: var(--muted); font-size: 16px;
+    padding: 4px 2px; flex: none; cursor: grab; touch-action: none; line-height: 1;
+  }
+  .drag-handle:active { cursor: grabbing; }
+  li.dragging { opacity: 0.45; background: var(--row-line); border-radius: 8px; }
   .empty { text-align: center; color: var(--muted); font-size: 13px; padding: 18px 0; }
   .cat-progress { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
 
@@ -796,15 +802,25 @@
     if (!open) return;
 
     var list = document.getElementById('rList');
+    list._onReorderCommit = function (idOrder) {
+      state.routines = reorderArrayByIds(state.routines, idOrder, function (r) { return !r.del && (r.created || '') <= selectedDate; });
+      save(); renderAll();
+    };
     rs.forEach(function (r) {
       var rc = checks[r.id] || { status: 0 };
       var li = document.createElement('li');
+      li.dataset.id = r.id;
       li.innerHTML =
+        '<span class="drag-handle" title="드래그해서 순서 바꾸기">⠿</span>' +
         '<button class="chk' + todoChkClass(rc) + '" title="' + TODO_CHK_TITLE + '">' + todoChkGlyph(rc) + '</button>' +
         '<span class="r-title' + (rc.status === 2 ? ' done' : '') + '"></span>' +
         '<button class="icon-btn edit" title="수정">✎</button>' +
         '<button class="icon-btn del" title="삭제">✕</button>';
       li.querySelector('.r-title').textContent = r.title;
+      li.querySelector('.drag-handle').addEventListener('pointerdown', function (e) {
+        e.preventDefault();
+        startItemReorder(li, list);
+      });
       li.querySelector('.chk').addEventListener('click', function () {
         var was2 = rc.status === 2;
         var nextStatus = ((rc.status || 0) + 1) % 4;
@@ -914,6 +930,54 @@
     return { todoChanged: todoChanged, slotChanged: 0 };
   }
 
+  /* ── 리스트 항목 드래그로 순서 바꾸기 (매일 루틴 · 카테고리 할 일 공통) ──
+     각 li의 .drag-handle을 누른 채 위/아래로 옮기면, 지나친 항목과 자리를
+     맞바꾸며 실시간으로 순서가 표시된다. 손을 떼면 list._onReorderCommit
+     (렌더 시 각자 등록해 둔 콜백)에 최종 id 순서를 넘겨 실제 데이터에 반영한다. */
+  var reorderDrag = null;
+  function startItemReorder(li, list) {
+    if (reorderDrag) return;
+    reorderDrag = { li: li, list: list };
+    li.classList.add('dragging');
+    document.addEventListener('pointermove', onItemReorderMove);
+    document.addEventListener('pointerup', endItemReorder);
+    document.addEventListener('pointercancel', endItemReorder);
+  }
+  function onItemReorderMove(e) {
+    if (!reorderDrag) return;
+    var el = document.elementFromPoint(e.clientX, e.clientY);
+    var target = el && el.closest ? el.closest('li') : null;
+    if (!target || target === reorderDrag.li || target.parentNode !== reorderDrag.list) return;
+    var rect = target.getBoundingClientRect();
+    var before = e.clientY < rect.top + rect.height / 2;
+    reorderDrag.list.insertBefore(reorderDrag.li, before ? target : target.nextSibling);
+  }
+  function endItemReorder() {
+    document.removeEventListener('pointermove', onItemReorderMove);
+    document.removeEventListener('pointerup', endItemReorder);
+    document.removeEventListener('pointercancel', endItemReorder);
+    if (!reorderDrag) return;
+    var list = reorderDrag.list;
+    var li = reorderDrag.li;
+    li.classList.remove('dragging');
+    reorderDrag = null;
+    var onCommit = list._onReorderCommit;
+    if (!onCommit) return;
+    var idOrder = Array.prototype.map.call(list.children, function (c) { return c.dataset.id; });
+    onCommit(idOrder);
+  }
+  // 원본 배열에서 활성 항목이 있던 자리들만 새 순서로 다시 채운다.
+  // (삭제된 항목·다른 카테고리 항목 등 화면에 안 보이는 항목의 절대 위치는 그대로 유지)
+  function reorderArrayByIds(arr, idOrder, isActive) {
+    var byId = {};
+    arr.forEach(function (item) { byId[item.id] = item; });
+    var newOrder = idOrder.map(function (id) { return byId[id]; }).filter(Boolean);
+    var idx = 0;
+    return arr.map(function (item) {
+      return isActive(item) ? newOrder[idx++] : item;
+    });
+  }
+
   /* ── 렌더: 오늘 할 일 쏟아내기 (분류 전) ── */
   function renderInboxPanel() {
     var panel = document.getElementById('panel');
@@ -1007,16 +1071,26 @@
     if (!todos.length) {
       list.innerHTML = '<div class="empty">아직 할 일이 없어요.</div>';
     } else {
+      list._onReorderCommit = function (idOrder) {
+        d.todos = reorderArrayByIds(d.todos, idOrder, function (t) { return t.cat === cat && !t.del; });
+        save(); renderAll();
+      };
       todos.forEach(function (t) {
         var li = document.createElement('li');
+        li.dataset.id = t.id;
         var carryTag = t.carried
           ? '<span class="tag-carry">↪ ' + (t.from ? t.from.slice(5).replace('-', '/') : '이월') + '</span>' : '';
         li.innerHTML =
+          '<span class="drag-handle" title="드래그해서 순서 바꾸기">⠿</span>' +
           '<button class="chk' + todoChkClass(t) + '" title="' + TODO_CHK_TITLE + '">' + todoChkGlyph(t) + '</button>' +
           '<span class="t-title' + (t.status === 2 ? ' done' : '') + '"></span>' + carryTag +
           '<button class="icon-btn edit" title="수정">✎</button>' +
           '<button class="icon-btn del" title="삭제">✕</button>';
         li.querySelector('.t-title').textContent = t.title;
+        li.querySelector('.drag-handle').addEventListener('pointerdown', function (e) {
+          e.preventDefault();
+          startItemReorder(li, list);
+        });
         li.querySelector('.chk').addEventListener('click', function () {
           var r = advanceTodoStatus(t);
           var n = syncSlotsWithTodo(t);
