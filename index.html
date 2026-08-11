@@ -1282,6 +1282,11 @@
 
   /* ── 렌더: 일정표 (15분 단위) ─────────── */
   var editorMin = null;
+  // true일 때만 배치 편집기 입력창에 포커스를 준다 — 방금 그 칸을 눌러
+  // 편집기를 새로 연 경우에만 세우고, 다른 칸 삭제·체크 등 무관한 동작으로
+  // 화면이 다시 그려질 때는 포커스를 다시 뺏지 않는다(스크롤이 편집기
+  // 위치로 튀거나, 다른 입력창에 타이핑 중인 포커스를 가로채는 것을 방지).
+  var editorFocusPending = false;
   function placeActivity(name, start, dur, selCat, forDate) {
     var slots = day(forDate || selectedDate).slots;
     if (!name) { toast('활동 이름을 입력해 주세요'); return false; }
@@ -1462,6 +1467,7 @@
           row.innerHTML = timeCell + '<div class="slot-body clickable"></div>';
           row.querySelector('.slot-body').addEventListener('click', function () {
             editorMin = mm;
+            editorFocusPending = true;
             renderAll();
           });
         }
@@ -1469,8 +1475,11 @@
       })(mm);
     }
 
-    var seInput = document.getElementById('seName');
-    if (seInput) seInput.focus();
+    if (editorFocusPending) {
+      var seInput = document.getElementById('seName');
+      if (seInput) seInput.focus({ preventScroll: true });
+      editorFocusPending = false;
+    }
   }
 
   /* ── 수업 계획 (첨부파일은 기기 로컬 저장, 동기화 대상 아님) ── */
