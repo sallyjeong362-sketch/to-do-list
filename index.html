@@ -825,8 +825,13 @@
         var was2 = rc.status === 2;
         var nextStatus = ((rc.status || 0) + 1) % 4;
         checks[r.id] = { status: nextStatus, done: nextStatus === 2, ts: Date.now() };
-        if (nextStatus === 2 && !was2) addPoints(POINT_ROUTINE, '루틴 실천!');
+        if (nextStatus === 2 && !was2) addPoints(POINT_ROUTINE, null);
         else if (nextStatus !== 2 && was2) addPoints(-POINT_ROUTINE, null);
+        var n = syncSlotsWithRoutine(r);
+        if (nextStatus === 2 && !was2) {
+          toast(n ? '루틴 실천! 일정표 블록 ' + n + '개도 함께 완료 +' + (POINT_ROUTINE + n * POINT_SLOT) + 'P'
+                  : '루틴 실천! +' + POINT_ROUTINE + 'P');
+        }
         save(); renderAll();
       });
       li.querySelector('.edit').addEventListener('click', function () {
@@ -914,7 +919,7 @@
     });
     return changed;
   }
-  // 일정표 블록 → 같은 제목의 할 일(카테고리 탭·수업 계획)
+  // 일정표 블록 → 같은 제목의 할 일(카테고리 탭·수업 계획) + 매일 루틴
   // 한 활동이 여러 15분 칸에 걸쳐 있어도(같은 이름을 공유) 그 칸들끼리는
   // 서로 전파하지 않는다 — 각 15분 칸은 항상 따로 체크할 수 있어야 하고,
   // 여러 칸을 한꺼번에 바꾸고 싶을 때는 드래그를 쓴다.
@@ -927,7 +932,36 @@
         todoChanged++;
       }
     });
-    return { todoChanged: todoChanged, slotChanged: 0 };
+    var routineChanged = 0;
+    activeRoutines(selectedDate).forEach(function (r) {
+      if (r.title === s.name) {
+        var rc = ensureRcheck(d, r.id);
+        if (rc.status !== s.status) {
+          mirrorStatus(rc, s.status, POINT_ROUTINE);
+          routineChanged++;
+        }
+      }
+    });
+    return { todoChanged: todoChanged, slotChanged: 0, routineChanged: routineChanged };
+  }
+  function ensureRcheck(d, rId) {
+    if (!d.rchecks[rId]) d.rchecks[rId] = { status: 0, done: false, ts: Date.now() };
+    return d.rchecks[rId];
+  }
+  // 매일 루틴 → 같은 이름의 일정표 블록들
+  function syncSlotsWithRoutine(r) {
+    var d = day(selectedDate);
+    var rc = d.rchecks[r.id];
+    if (!rc) return 0;
+    var changed = 0;
+    Object.keys(d.slots).forEach(function (k) {
+      var sl = d.slots[k];
+      if (!sl.del && sl.name === r.title && sl.status !== rc.status) {
+        mirrorStatus(sl, rc.status, POINT_SLOT);
+        changed++;
+      }
+    });
+    return changed;
   }
 
   /* ── 리스트 항목 드래그로 순서 바꾸기 (매일 루틴 · 카테고리 할 일 공통) ──
@@ -1185,7 +1219,7 @@
         addPoints(target ? n * POINT_SLOT : -n * POINT_SLOT, null);
         var daySlots = day(selectedDate).slots;
         var seenNames = {};
-        var extraTodo = 0, extraSlot = 0;
+        var extraTodo = 0, extraSlot = 0, extraRoutine = 0;
         changedMins.forEach(function (m) {
           var sl = daySlots[m];
           if (!sl || sl.del || seenNames[sl.name]) return;
@@ -1193,9 +1227,10 @@
           var sync = syncTodoAndSlotsWithSlot(sl);
           extraTodo += sync.todoChanged;
           extraSlot += sync.slotChanged;
+          extraRoutine += sync.routineChanged;
         });
-        var extraCount = extraTodo + extraSlot;
-        var extraPts = extraTodo * POINT_TODO + extraSlot * POINT_SLOT;
+        var extraCount = extraTodo + extraSlot + extraRoutine;
+        var extraPts = extraTodo * POINT_TODO + extraSlot * POINT_SLOT + extraRoutine * POINT_ROUTINE;
         toast(target
           ? '15분 블록 ' + n + '개 완료' + (extraCount ? ' · 연동 항목 ' + extraCount + '개도 완료' : '') + '! +' + (n * POINT_SLOT + extraPts) + 'P'
           : '15분 블록 ' + n + '개 체크 해제' + (extraCount ? ' · 연동 항목 ' + extraCount + '개도 해제' : ''));
@@ -1207,8 +1242,8 @@
         var r = advanceSlotStatus(sl);
         var sync2 = syncTodoAndSlotsWithSlot(sl);
         if (r.now2 && !r.was2) {
-          var extraCount2 = sync2.todoChanged + sync2.slotChanged;
-          var extraPts2 = sync2.todoChanged * POINT_TODO + sync2.slotChanged * POINT_SLOT;
+          var extraCount2 = sync2.todoChanged + sync2.slotChanged + sync2.routineChanged;
+          var extraPts2 = sync2.todoChanged * POINT_TODO + sync2.slotChanged * POINT_SLOT + sync2.routineChanged * POINT_ROUTINE;
           toast(extraCount2 ? '15분 실천! 연동 항목도 함께 완료 +' + (POINT_SLOT + extraPts2) + 'P' : '15분 실천! +' + POINT_SLOT + 'P');
         }
         save();
@@ -1352,6 +1387,10 @@
       .map(function (t) {
         return '<option value="' + t.title.replace(/"/g, '&quot;') + '" label="' +
           (CATS[t.cat] ? CATS[t.cat].name + ' · ' : '') + t.title.replace(/"/g, '&quot;') + '">';
+      }).join('') +
+      activeRoutines(selectedDate).map(function (r) {
+        return '<option value="' + r.title.replace(/"/g, '&quot;') + '" label="🔁 루틴 · ' +
+          r.title.replace(/"/g, '&quot;') + '">';
       }).join('');
 
     var catOpts = '<option value="">카테고리 자동</option>' +
@@ -1411,8 +1450,8 @@
             var r = advanceSlotStatus(s);
             var sync = syncTodoAndSlotsWithSlot(s);
             if (r.now2 && !r.was2) {
-              var extraCount = sync.todoChanged + sync.slotChanged;
-              var extraPts = sync.todoChanged * POINT_TODO + sync.slotChanged * POINT_SLOT;
+              var extraCount = sync.todoChanged + sync.slotChanged + sync.routineChanged;
+              var extraPts = sync.todoChanged * POINT_TODO + sync.slotChanged * POINT_SLOT + sync.routineChanged * POINT_ROUTINE;
               toast(extraCount ? '15분 실천! 연동 항목도 함께 완료 +' + (POINT_SLOT + extraPts) + 'P' : '15분 실천! +' + POINT_SLOT + 'P');
             }
             save(); renderAll();
