@@ -299,14 +299,24 @@
     width: 48px; flex: none; font-size: 10px; color: var(--muted);
     padding: 6px 4px 0 2px; text-align: right;
   }
-  .slot-body { flex: 1; padding: 2px 0 2px 8px; display: flex; align-items: center; }
+  .slot-body {
+    flex: 1; padding: 2px 0 2px 8px; display: flex;
+    flex-direction: column; align-items: stretch; gap: 3px;
+  }
   .slot-body.clickable { cursor: pointer; }
   .slot-body.clickable:hover { background: var(--hover-bg); }
   .slot-block {
-    flex: 1; display: flex; align-items: center; gap: 8px;
+    flex: none; display: flex; align-items: center; gap: 8px;
     border-radius: 8px; padding: 3px 8px; font-size: 13px;
     background: var(--slot-bg); border-left: 4px solid var(--c5);
   }
+  .slot-add-extra {
+    align-self: flex-start; flex: none; width: 22px; height: 22px; margin: 1px 0;
+    border-radius: 7px; border: 1px dashed var(--muted); background: none; color: var(--muted);
+    font-size: 14px; line-height: 1; cursor: pointer; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .slot-add-extra:hover { background: var(--hover-bg); color: var(--ink); }
   .slot-block.done-block { opacity: .55; }
   .slot-block.cat-c1 { background: var(--slot-c1); border-left-color: var(--c1); }
   .slot-block.cat-c2 { background: var(--slot-c2); border-left-color: var(--c2); }
@@ -339,7 +349,7 @@
     border: 1px solid var(--c5); border-radius: 8px; background: var(--bg); color: var(--ink);
   }
   .slot-editor {
-    flex: 1; display: flex; flex-direction: column; gap: 5px;
+    flex: none; display: flex; flex-direction: column; gap: 5px;
     border: 1px dashed var(--c5); border-radius: 8px; background: var(--hover-bg);
     padding: 7px 8px; margin: 2px 0;
   }
@@ -530,12 +540,14 @@
   ];
 
   var STORE_KEY = 'todoTracker.v1';
+  // uid()는 load() → migrateTodoStatus()가 예전 일정표 데이터에 id를 붙일 때
+  // 곧바로 필요하므로, load()를 부르기 전에 먼저 정의해 둔다.
+  var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); };
   var state = load();
   var todayKey = dateKey(new Date());
   var selectedDate = todayKey;
   var calCursor = new Date();       // 캘린더에 표시 중인 달
   var activeTab = 'inbox';
-  var uid = function () { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); };
 
   /* ── 저장/불러오기 ─────────────────────── */
   function load() {
@@ -564,7 +576,15 @@
       });
       var slots = s.days[key].slots || {};
       Object.keys(slots).forEach(function (m) {
-        if (!slots[m].del && typeof slots[m].status !== 'number') slots[m].status = slots[m].done ? 2 : 0;
+        // 예전엔 한 칸에 활동을 하나만 넣을 수 있어서 슬롯 하나가 객체 하나였다.
+        // 이제 같은 15분 칸에 여러 활동을 동시에 넣을 수 있도록 배열로 바꾼다.
+        var v = slots[m];
+        var arr = Array.isArray(v) ? v : [v];
+        arr.forEach(function (sl) {
+          if (!sl.id) sl.id = uid();
+          if (!sl.del && typeof sl.status !== 'number') sl.status = sl.done ? 2 : 0;
+        });
+        slots[m] = arr;
       });
     });
   }
@@ -603,7 +623,9 @@
     var total = 0, done = 0;
     if (d) {
       (d.todos || []).forEach(function (t) { if (t.del) return; total++; if (t.done) done++; });
-      Object.keys(d.slots || {}).forEach(function (m) { if (d.slots[m].del) return; total++; if (d.slots[m].done) done++; });
+      Object.keys(d.slots || {}).forEach(function (m) {
+        (d.slots[m] || []).forEach(function (sl) { if (sl.del) return; total++; if (sl.done) done++; });
+      });
     }
     if (key <= todayKey) {
       var checks = (d && d.rchecks) || {};
@@ -907,15 +929,17 @@
     else if (newStatus !== 2 && was2) addPoints(-pointValue, null);
   }
   // 할 일(카테고리 탭·수업 계획) → 같은 이름의 일정표 블록들
+  // 한 15분 칸에 동시에 배치된 여러 활동 중 이름이 같은 것 전부에 반영된다.
   function syncSlotsWithTodo(t) {
     var slots = day(selectedDate).slots;
     var changed = 0;
     Object.keys(slots).forEach(function (k) {
-      var sl = slots[k];
-      if (!sl.del && sl.name === t.title && sl.status !== t.status) {
-        mirrorStatus(sl, t.status, POINT_SLOT);
-        changed++;
-      }
+      (slots[k] || []).forEach(function (sl) {
+        if (!sl.del && sl.name === t.title && sl.status !== t.status) {
+          mirrorStatus(sl, t.status, POINT_SLOT);
+          changed++;
+        }
+      });
     });
     return changed;
   }
@@ -955,13 +979,33 @@
     if (!rc) return 0;
     var changed = 0;
     Object.keys(d.slots).forEach(function (k) {
-      var sl = d.slots[k];
-      if (!sl.del && sl.name === r.title && sl.status !== rc.status) {
-        mirrorStatus(sl, rc.status, POINT_SLOT);
-        changed++;
-      }
+      (d.slots[k] || []).forEach(function (sl) {
+        if (!sl.del && sl.name === r.title && sl.status !== rc.status) {
+          mirrorStatus(sl, rc.status, POINT_SLOT);
+          changed++;
+        }
+      });
     });
     return changed;
+  }
+  // 특정 15분 칸에서 id로 특정 항목(레인) 하나를 찾는다.
+  function laneAt(min, laneId) {
+    var arr = day(selectedDate).slots[min];
+    if (!arr) return null;
+    for (var i = 0; i < arr.length; i++) {
+      if (arr[i].id === laneId && !arr[i].del) return arr[i];
+    }
+    return null;
+  }
+  // 슬롯 값을 항상 배열로 다룬다 — 예전 데이터(칸 하나에 활동 하나, 배열이
+  // 아님)나 기기 간 동기화로 아직 마이그레이션되지 않은 원격 데이터도 함께
+  // 처리해야 해서, id가 없는 예전 항목에는 고정 id를 붙여 병합 시 같은
+  // 칸의 예전 항목끼리 정상적으로 비교되도록 한다.
+  function asLaneArray(v) {
+    if (!v) return [];
+    var arr = Array.isArray(v) ? v : [v];
+    arr.forEach(function (sl) { if (!sl.id) sl.id = 'legacy'; });
+    return arr;
   }
 
   /* ── 리스트 항목 드래그로 순서 바꾸기 (매일 루틴 · 카테고리 할 일 공통) ──
@@ -1174,19 +1218,23 @@
   }
   function applyDragTo(min) {
     if (!slotDrag) return;
-    var slots = day(selectedDate).slots;
-    var sl = slots[min];
-    if (!sl || sl.del || (sl.status === 2) === slotDrag.target) return;
+    // 이 칸에 동시 배치된 여러 항목 중, 드래그를 시작한 활동과 같은 그룹(같은
+    // 연속 배치)인 것만 찾아 바꾼다 — 같은 시간대의 다른 동시 항목은 건드리지 않는다.
+    var arr = day(selectedDate).slots[min] || [];
+    var sl = null;
+    for (var i = 0; i < arr.length; i++) {
+      if (!arr[i].del && arr[i].group === slotDrag.group) { sl = arr[i]; break; }
+    }
+    if (!sl || (sl.status === 2) === slotDrag.target) return;
     sl.status = slotDrag.target ? 2 : 0;
     sl.done = slotDrag.target;
     sl.ts = Date.now();
-    slotDrag.changed.push(min);
-    var row = document.querySelector('.slot-row[data-min="' + min + '"]');
-    if (row) {
-      var block = row.querySelector('.slot-block');
-      var chk = row.querySelector('.chk');
-      var nameEl = row.querySelector('.name');
-      if (block) block.classList.toggle('done-block', sl.status === 2);
+    slotDrag.changed.push({ min: min, laneId: sl.id });
+    var block = document.querySelector('.slot-block[data-lane="' + sl.id + '"]');
+    if (block) {
+      var chk = block.querySelector('.chk');
+      var nameEl = block.querySelector('.name');
+      block.classList.toggle('done-block', sl.status === 2);
       if (chk) { chk.className = 'chk' + todoChkClass(sl); chk.textContent = todoChkGlyph(sl); }
       if (nameEl) nameEl.classList.toggle('done', sl.status === 2);
     }
@@ -1209,8 +1257,9 @@
     if (!slotDrag) return;
     var moved = slotDrag.moved;
     var startMin = slotDrag.startMin;
-    var changedMins = slotDrag.changed.slice();
-    var n = changedMins.length;
+    var startLaneId = slotDrag.laneId;
+    var changedEntries = slotDrag.changed.slice();
+    var n = changedEntries.length;
     var target = slotDrag.target;
     slotDrag = null;
     slotDragEndAt = Date.now();
@@ -1220,8 +1269,10 @@
         var daySlots = day(selectedDate).slots;
         var seenNames = {};
         var extraTodo = 0, extraSlot = 0, extraRoutine = 0;
-        changedMins.forEach(function (m) {
-          var sl = daySlots[m];
+        changedEntries.forEach(function (e) {
+          var arr = daySlots[e.min] || [];
+          var sl = null;
+          for (var i = 0; i < arr.length; i++) { if (arr[i].id === e.laneId) { sl = arr[i]; break; } }
           if (!sl || sl.del || seenNames[sl.name]) return;
           seenNames[sl.name] = true;
           var sync = syncTodoAndSlotsWithSlot(sl);
@@ -1237,8 +1288,8 @@
         save();
       }
     } else {
-      var sl = day(selectedDate).slots[startMin];
-      if (sl && !sl.del) {
+      var sl = laneAt(startMin, startLaneId);
+      if (sl) {
         var r = advanceSlotStatus(sl);
         var sync2 = syncTodoAndSlotsWithSlot(sl);
         if (r.now2 && !r.was2) {
@@ -1251,10 +1302,10 @@
     }
     renderAll();
   }
-  function startSlotDrag(min) {
-    var sl = day(selectedDate).slots[min];
-    if (!sl || sl.del || slotDrag) return;
-    slotDrag = { startMin: min, target: sl.status !== 2, moved: false, changed: [] };
+  function startSlotDrag(min, laneId) {
+    var sl = laneAt(min, laneId);
+    if (!sl || slotDrag) return;
+    slotDrag = { startMin: min, laneId: laneId, group: sl.group, target: sl.status !== 2, moved: false, changed: [] };
     document.addEventListener('pointermove', onSlotDragMove);
     document.addEventListener('pointerup', endSlotDrag);
     document.addEventListener('pointercancel', endSlotDrag);
@@ -1264,13 +1315,14 @@
   var fillDrag = null;
   function updateFillPreview(targetMin) {
     if (!fillDrag) return;
-    var slots = day(selectedDate).slots;
     var src = fillDrag.sourceMin;
     var mins = [];
     if (targetMin !== src) {
       var dir = targetMin > src ? STEP : -STEP;
+      // 이미 다른 활동이 있는 칸도 함께 채운다 — 같은 시간에 여러 항목이
+      // 동시에 들어갈 수 있으므로 날짜 경계에서만 멈춘다.
       for (var m = src + dir; (dir > 0 ? m <= targetMin : m >= targetMin); m += dir) {
-        if (m < SLOT_START || m >= SLOT_END || (slots[m] && !slots[m].del)) break;
+        if (m < SLOT_START || m >= SLOT_END) break;
         mins.push(m);
       }
     }
@@ -1294,22 +1346,23 @@
     if (!fillDrag) return;
     var mins = fillDrag.mins || [];
     var slots = day(selectedDate).slots;
-    var src = slots[fillDrag.sourceMin];
+    var src = laneAt(fillDrag.sourceMin, fillDrag.sourceLaneId);
     fillDrag = null;
-    if (mins.length && src && !src.del) {
+    if (mins.length && src) {
       mins.forEach(function (m) {
-        slots[m] = { name: src.name, status: 0, done: false, group: src.group, cat: src.cat || null, ts: Date.now() };
+        if (!slots[m]) slots[m] = [];
+        slots[m].push({ id: uid(), name: src.name, status: 0, done: false, group: src.group, cat: src.cat || null, ts: Date.now() });
       });
       save();
       toast('「' + src.name + '」 ' + mins.length + '칸 채움 (+' + fmtDur(mins.length * STEP) + ')');
     }
     renderAll();
   }
-  function startFillDrag(min) {
+  function startFillDrag(min, laneId) {
     if (fillDrag || slotDrag) return;
-    var s0 = day(selectedDate).slots[min];
-    if (!s0 || s0.del) return;
-    fillDrag = { sourceMin: min, mins: [] };
+    var s0 = laneAt(min, laneId);
+    if (!s0) return;
+    fillDrag = { sourceMin: min, sourceLaneId: laneId, mins: [] };
     document.addEventListener('pointermove', onFillMove);
     document.addEventListener('pointerup', endFillDrag);
     document.addEventListener('pointercancel', endFillDrag);
@@ -1322,17 +1375,16 @@
   // 화면이 다시 그려질 때는 포커스를 다시 뺏지 않는다(스크롤이 편집기
   // 위치로 튀거나, 다른 입력창에 타이핑 중인 포커스를 가로채는 것을 방지).
   var editorFocusPending = false;
+  // 같은 15분 칸에 이미 다른 활동이 있어도 함께 배치할 수 있다(동시 진행).
   function placeActivity(name, start, dur, selCat, forDate) {
     var slots = day(forDate || selectedDate).slots;
     if (!name) { toast('활동 이름을 입력해 주세요'); return false; }
     if (start + dur > SLOT_END) { toast('24:00을 넘길 수 없어요'); return false; }
-    for (var m2 = start; m2 < start + dur; m2 += STEP) {
-      if (slots[m2] && !slots[m2].del) { toast(minToHM(m2) + ' 칸이 이미 차 있어요'); return false; }
-    }
     var cat = selCat && selCat !== 'etc' ? selCat : (selCat === 'etc' ? null : matchTodoCat(name));
     var g = uid();
     for (var m3 = start; m3 < start + dur; m3 += STEP) {
-      slots[m3] = { name: name, status: 0, done: false, group: g, cat: cat, ts: Date.now() };
+      if (!slots[m3]) slots[m3] = [];
+      slots[m3].push({ id: uid(), name: name, status: 0, done: false, group: g, cat: cat, ts: Date.now() });
     }
     save();
     return g;
@@ -1352,10 +1404,12 @@
     var counts = {};
     var total = 0;
     Object.keys(slots).forEach(function (k) {
-      if (slots[k].del) return;
-      var c = slots[k].cat && CATS[slots[k].cat] ? slots[k].cat : 'etc';
-      counts[c] = (counts[c] || 0) + 1;
-      total++;
+      (slots[k] || []).forEach(function (sl) {
+        if (sl.del) return;
+        var c = sl.cat && CATS[sl.cat] ? sl.cat : 'etc';
+        counts[c] = (counts[c] || 0) + 1;
+        total++;
+      });
     });
     if (!total) return '';
     var order = CAT_KEYS.concat(['etc']);
@@ -1376,8 +1430,11 @@
     var panel = document.getElementById('panel');
     var d = day(selectedDate);
     var slots = d.slots;
-    var keys = Object.keys(slots).filter(function (k) { return !slots[k].del; });
-    var doneN = keys.filter(function (k) { return slots[k].done; }).length;
+    var allLanes = [];
+    Object.keys(slots).forEach(function (k) {
+      (slots[k] || []).forEach(function (sl) { if (!sl.del) allLanes.push(sl); });
+    });
+    var doneN = allLanes.filter(function (sl) { return sl.done; }).length;
 
     var durOpts = [15, 30, 45, 60, 90, 120].map(function (n) {
       return '<option value="' + n + '">' + n + '분</option>';
@@ -1397,12 +1454,106 @@
       CAT_KEYS.map(function (k) { return '<option value="' + k + '">' + CATS[k].name + '</option>'; }).join('') +
       '<option value="etc">미분류</option>';
 
-    if (editorMin !== null && slots[editorMin] && !slots[editorMin].del) editorMin = null;
-
     panel.innerHTML =
-      '<div class="sch-progress">15분 블록 ' + doneN + ' / ' + keys.length + ' 실천 · <b>시간 칸을 누르면 그 자리에서 바로 배치</b> · ✓ 누른 채 드래그=여러 칸 체크/해제 · ⇕ 드래그=같은 활동으로 칸 채우기</div>' +
+      '<div class="sch-progress">15분 블록 ' + doneN + ' / ' + allLanes.length + ' 실천 · <b>시간 칸을 누르면 그 자리에서 바로 배치</b> · 이미 채워진 칸의 +=같은 시간에 항목 추가(동시 진행) · ✓ 누른 채 드래그=여러 칸 체크/해제 · ⇕ 드래그=같은 활동으로 칸 채우기</div>' +
       balanceHTML(slots) +
       '<div class="timeline" id="timeline"></div>';
+
+    // 한 15분 칸에 동시에 배치된 항목마다 블록 하나씩 만든다.
+    function laneBlockHTML(s) {
+      return '<div class="slot-block' + (s.status === 2 ? ' done-block' : '') +
+        (s.cat && CATS[s.cat] ? ' cat-' + s.cat : '') + '" data-lane="' + s.id + '">' +
+        '<button class="chk' + todoChkClass(s) + '" title="' + TODO_CHK_TITLE + '">' + todoChkGlyph(s) + '</button>' +
+        '<span class="name' + (s.status === 2 ? ' done' : '') + '"></span>' +
+        '<input class="note-input" maxlength="60" placeholder="세부 작업 메모">' +
+        '<span class="fill-handle" title="드래그해서 같은 활동으로 칸 채우기">⇕</span>' +
+        '<button class="icon-btn del" title="이 항목 삭제">✕</button>' +
+        '</div>';
+    }
+    function wireLaneBlock(blockEl, s, mm) {
+      blockEl.querySelector('.name').textContent = s.name;
+      var noteInp = blockEl.querySelector('.note-input');
+      noteInp.value = s.note || '';
+      noteInp.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') this.blur();
+        e.stopPropagation();
+      });
+      noteInp.addEventListener('blur', function () {
+        var v = this.value.trim();
+        if ((s.note || '') === v) return;
+        if (v) s.note = v; else delete s.note;
+        s.ts = Date.now();
+        save();
+      });
+      blockEl.querySelector('.fill-handle').addEventListener('pointerdown', function (e) {
+        e.preventDefault();
+        startFillDrag(mm, s.id);
+      });
+      var chk = blockEl.querySelector('.chk');
+      chk.addEventListener('pointerdown', function (e) {
+        e.preventDefault();
+        startSlotDrag(mm, s.id);
+      });
+      chk.addEventListener('click', function () {
+        if (Date.now() - slotDragEndAt < 400) return;
+        var r = advanceSlotStatus(s);
+        var sync = syncTodoAndSlotsWithSlot(s);
+        if (r.now2 && !r.was2) {
+          var extraCount = sync.todoChanged + sync.slotChanged + sync.routineChanged;
+          var extraPts = sync.todoChanged * POINT_TODO + sync.slotChanged * POINT_SLOT + sync.routineChanged * POINT_ROUTINE;
+          toast(extraCount ? '15분 실천! 연동 항목도 함께 완료 +' + (POINT_SLOT + extraPts) + 'P' : '15분 실천! +' + POINT_SLOT + 'P');
+        }
+        save(); renderAll();
+      });
+      blockEl.querySelector('.del').addEventListener('click', function () {
+        if (s.status === 2) addPoints(-POINT_SLOT);
+        s.del = Date.now(); s.ts = Date.now();
+        save(); renderAll();
+        toast(minToHM(mm) + ' 칸의 「' + s.name + '」 항목 삭제');
+      });
+    }
+    function editorHTML(mm) {
+      return '<div class="slot-editor">' +
+        '<input id="seName" list="seDl" autocomplete="off" maxlength="60" placeholder="' + minToHM(mm) + ' 시작 — 활동 이름 (Enter=배치)">' +
+        '<datalist id="seDl">' + dl + '</datalist>' +
+        '<div class="se-row">' +
+        '<select id="seCat" title="카테고리">' + catOpts + '</select>' +
+        '<select id="seDur" title="소요 시간">' + durOpts + '</select>' +
+        '<button id="seOk">배치</button>' +
+        '<button class="se-cancel" id="seCancel" title="취소">✕</button>' +
+        '</div></div>';
+    }
+    function wireEditor(row, mm) {
+      var doPlace = function () {
+        var nm = document.getElementById('seName').value.trim();
+        var ok = placeActivity(nm, mm,
+          +document.getElementById('seDur').value,
+          document.getElementById('seCat').value);
+        if (ok) { editorMin = null; renderAll(); }
+      };
+      row.querySelector('#seOk').addEventListener('click', doPlace);
+      row.querySelector('#seCancel').addEventListener('click', function () {
+        editorMin = null; renderAll();
+      });
+      row.querySelector('#seName').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') doPlace();
+        if (e.key === 'Escape') { editorMin = null; renderAll(); }
+        e.stopPropagation();
+      });
+      // 할 일과 이름이 같으면 그 카테고리를 화면에도 바로 보여준다
+      // (지금까지도 배치 시 자동으로 적용은 됐지만, 선택창이 계속
+      // "카테고리 자동"으로만 보여서 아무것도 안 정해진 것처럼 보였다)
+      var catTouchedByUser = false;
+      row.querySelector('#seCat').addEventListener('change', function () {
+        catTouchedByUser = true;
+      });
+      row.querySelector('#seName').addEventListener('input', function () {
+        if (catTouchedByUser) return;
+        var catSel = document.getElementById('seCat');
+        var matched = matchTodoCat(this.value.trim());
+        if (catSel) catSel.value = matched && CATS[matched] ? matched : '';
+      });
+    }
 
     var tl = document.getElementById('timeline');
     for (var mm = SLOT_START; mm < SLOT_END; mm += STEP) {
@@ -1411,104 +1562,30 @@
         row.className = 'slot-row' + (mm % 60 === 0 ? ' hour-start' : '');
         row.setAttribute('data-min', mm);
         var timeCell = '<div class="slot-time">' + (mm % 60 === 0 ? minToHM(mm) : '') + '</div>';
-        var s = slots[mm];
-        if (s && !s.del) {
-          row.innerHTML = timeCell +
-            '<div class="slot-body"><div class="slot-block' + (s.status === 2 ? ' done-block' : '') +
-            (s.cat && CATS[s.cat] ? ' cat-' + s.cat : '') + '">' +
-            '<button class="chk' + todoChkClass(s) + '" title="' + TODO_CHK_TITLE + '">' + todoChkGlyph(s) + '</button>' +
-            '<span class="name' + (s.status === 2 ? ' done' : '') + '"></span>' +
-            '<input class="note-input" maxlength="60" placeholder="세부 작업 메모">' +
-            '<span class="fill-handle" title="드래그해서 같은 활동으로 칸 채우기">⇕</span>' +
-            '<button class="icon-btn del" title="이 칸(15분)만 삭제">✕</button>' +
-            '</div></div>';
-          row.querySelector('.name').textContent = s.name;
-          var noteInp = row.querySelector('.note-input');
-          noteInp.value = s.note || '';
-          noteInp.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') this.blur();
-            e.stopPropagation();
-          });
-          noteInp.addEventListener('blur', function () {
-            var v = this.value.trim();
-            if ((s.note || '') === v) return;
-            if (v) s.note = v; else delete s.note;
-            s.ts = Date.now();
-            save();
-          });
-          row.querySelector('.fill-handle').addEventListener('pointerdown', function (e) {
-            e.preventDefault();
-            startFillDrag(mm);
-          });
-          var chk = row.querySelector('.chk');
-          chk.addEventListener('pointerdown', function (e) {
-            e.preventDefault();
-            startSlotDrag(mm);
-          });
-          chk.addEventListener('click', function () {
-            if (Date.now() - slotDragEndAt < 400) return;
-            var r = advanceSlotStatus(s);
-            var sync = syncTodoAndSlotsWithSlot(s);
-            if (r.now2 && !r.was2) {
-              var extraCount = sync.todoChanged + sync.slotChanged + sync.routineChanged;
-              var extraPts = sync.todoChanged * POINT_TODO + sync.slotChanged * POINT_SLOT + sync.routineChanged * POINT_ROUTINE;
-              toast(extraCount ? '15분 실천! 연동 항목도 함께 완료 +' + (POINT_SLOT + extraPts) + 'P' : '15분 실천! +' + POINT_SLOT + 'P');
-            }
-            save(); renderAll();
-          });
-          row.querySelector('.del').addEventListener('click', function () {
-            if (s.status === 2) addPoints(-POINT_SLOT);
-            slots[mm] = { del: Date.now(), ts: Date.now() };
-            save(); renderAll();
-            toast(minToHM(mm) + ' 칸의 「' + s.name + '」 삭제');
-          });
-        } else if (editorMin === mm) {
-          row.innerHTML = timeCell +
-            '<div class="slot-body"><div class="slot-editor">' +
-            '<input id="seName" list="seDl" autocomplete="off" maxlength="60" placeholder="' + minToHM(mm) + ' 시작 — 활동 이름 (Enter=배치)">' +
-            '<datalist id="seDl">' + dl + '</datalist>' +
-            '<div class="se-row">' +
-            '<select id="seCat" title="카테고리">' + catOpts + '</select>' +
-            '<select id="seDur" title="소요 시간">' + durOpts + '</select>' +
-            '<button id="seOk">배치</button>' +
-            '<button class="se-cancel" id="seCancel" title="취소">✕</button>' +
-            '</div></div></div>';
-          var doPlace = function () {
-            var nm = document.getElementById('seName').value.trim();
-            var ok = placeActivity(nm, mm,
-              +document.getElementById('seDur').value,
-              document.getElementById('seCat').value);
-            if (ok) { editorMin = null; renderAll(); }
-          };
-          row.querySelector('#seOk').addEventListener('click', doPlace);
-          row.querySelector('#seCancel').addEventListener('click', function () {
-            editorMin = null; renderAll();
-          });
-          row.querySelector('#seName').addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') doPlace();
-            if (e.key === 'Escape') { editorMin = null; renderAll(); }
-            e.stopPropagation();
-          });
-          // 할 일과 이름이 같으면 그 카테고리를 화면에도 바로 보여준다
-          // (지금까지도 배치 시 자동으로 적용은 됐지만, 선택창이 계속
-          // "카테고리 자동"으로만 보여서 아무것도 안 정해진 것처럼 보였다)
-          var catTouchedByUser = false;
-          row.querySelector('#seCat').addEventListener('change', function () {
-            catTouchedByUser = true;
-          });
-          row.querySelector('#seName').addEventListener('input', function () {
-            if (catTouchedByUser) return;
-            var catSel = document.getElementById('seCat');
-            var matched = matchTodoCat(this.value.trim());
-            if (catSel) catSel.value = matched && CATS[matched] ? matched : '';
-          });
-        } else {
+        var lanes = (slots[mm] || []).filter(function (x) { return !x.del; });
+        if (!lanes.length && editorMin !== mm) {
           row.innerHTML = timeCell + '<div class="slot-body clickable"></div>';
           row.querySelector('.slot-body').addEventListener('click', function () {
             editorMin = mm;
             editorFocusPending = true;
             renderAll();
           });
+        } else {
+          var bodyInner = lanes.map(laneBlockHTML).join('');
+          bodyInner += editorMin === mm ? editorHTML(mm)
+            : '<button type="button" class="slot-add-extra" title="같은 시간에 항목 추가">+</button>';
+          row.innerHTML = timeCell + '<div class="slot-body">' + bodyInner + '</div>';
+          var blockEls = row.querySelectorAll('.slot-block');
+          lanes.forEach(function (s, idx) { wireLaneBlock(blockEls[idx], s, mm); });
+          if (editorMin === mm) {
+            wireEditor(row, mm);
+          } else {
+            row.querySelector('.slot-add-extra').addEventListener('click', function () {
+              editorMin = mm;
+              editorFocusPending = true;
+              renderAll();
+            });
+          }
         }
         tl.appendChild(row);
       })(mm);
@@ -1716,7 +1793,7 @@
     save();
     lecFormOpen = false;
     toast('수업 계획을 추가했어요' + (prepLines.length ? ' · 준비할 일 ' + prepLines.length + '개를 수업자료 탭에 넣었어요' : '') +
-      (slotGroup ? '' : ' · 일정표 자리가 겹쳐 일정 배치는 건너뛰었어요'));
+      (slotGroup ? '' : ' · 24:00을 넘겨 일정표 배치는 건너뛰었어요'));
     renderAll();
   }
   function deleteLecturePlan(id) {
@@ -1727,11 +1804,12 @@
 
     if (plan.slotGroup) {
       Object.keys(d.slots).forEach(function (m) {
-        var sl = d.slots[m];
-        if (!sl.del && sl.group === plan.slotGroup) {
-          if (sl.done) addPoints(-POINT_SLOT);
-          d.slots[m] = { del: Date.now(), ts: Date.now() };
-        }
+        (d.slots[m] || []).forEach(function (sl) {
+          if (!sl.del && sl.group === plan.slotGroup) {
+            if (sl.done) addPoints(-POINT_SLOT);
+            sl.del = Date.now(); sl.ts = Date.now();
+          }
+        });
       });
     }
     var allTodoIds = (plan.todoIds || []).slice();
@@ -2086,8 +2164,6 @@
     Object.keys(dates).sort().forEach(function (dk) {
       var a = (newer.days || {})[dk], b = (older.days || {})[dk];
       if (!a || !b) { out.days[dk] = JSON.parse(JSON.stringify(a || b)); return; }
-      var now = Date.now();
-      var GC_MS = 14 * 24 * 60 * 60 * 1000;
       var merged = {
         todos: mergeItemArray(a.todos, b.todos, function (t) { return t.cat + '|' + t.title + '|' + (t.from || ''); }),
         inbox: mergeItemArray(a.inbox, b.inbox, function (t) { return t.title + '|' + (t.from || ''); }),
@@ -2109,10 +2185,8 @@
       Object.keys(sa).forEach(function (m) { mins[m] = 1; });
       Object.keys(sb).forEach(function (m) { mins[m] = 1; });
       Object.keys(mins).forEach(function (m) {
-        var va = sa[m], vb = sb[m];
-        var v = !va ? vb : (!vb ? va : (((vb.ts || 0) > (va.ts || 0)) ? vb : va));
-        if (v.del && now - v.del > GC_MS) return;
-        merged.slots[m] = v;
+        var arr = mergeItemArray(asLaneArray(sa[m]), asLaneArray(sb[m]), function () { return ''; });
+        if (arr.length) merged.slots[m] = arr;
       });
       out.days[dk] = JSON.parse(JSON.stringify(merged));
     });
