@@ -1465,7 +1465,7 @@
         } else if (editorMin === mm) {
           row.innerHTML = timeCell +
             '<div class="slot-body"><div class="slot-editor">' +
-            '<input id="seName" list="seDl" maxlength="60" placeholder="' + minToHM(mm) + ' 시작 — 활동 이름 (Enter=배치)">' +
+            '<input id="seName" list="seDl" autocomplete="off" maxlength="60" placeholder="' + minToHM(mm) + ' 시작 — 활동 이름 (Enter=배치)">' +
             '<datalist id="seDl">' + dl + '</datalist>' +
             '<div class="se-row">' +
             '<select id="seCat" title="카테고리">' + catOpts + '</select>' +
