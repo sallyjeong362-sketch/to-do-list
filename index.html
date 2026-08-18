@@ -329,7 +329,10 @@
   .balance-legend { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 6px; font-size: 11px; color: var(--muted); }
   .balance-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 3px; }
   .slot-block .name.done { text-decoration: line-through; }
-  .slot-block .name { flex: 0 1 auto; max-width: 48%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .slot-block .name {
+    flex: 0 1 auto; max-width: 48%; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; cursor: pointer;
+  }
   .slot-block .note-input {
     flex: 1; min-width: 40px; border: none; background: transparent;
     font-size: 11px; color: var(--muted); font-family: inherit;
@@ -1375,6 +1378,10 @@
   // 화면이 다시 그려질 때는 포커스를 다시 뺏지 않는다(스크롤이 편집기
   // 위치로 튀거나, 다른 입력창에 타이핑 중인 포커스를 가로채는 것을 방지).
   var editorFocusPending = false;
+  // 이미 항목이 있는 칸의 "+ 추가" 버튼은 평소엔 숨겨 두고, 그 칸의 기존
+  // 항목 이름을 눌렀을 때만 잠깐 나타난다 — 항상 떠 있으면 기존 화면보다
+  // 복잡해 보인다는 피드백에 따라, 필요할 때만 꺼내 쓰도록 했다.
+  var addRevealMin = null;
   // 같은 15분 칸에 이미 다른 활동이 있어도 함께 배치할 수 있다(동시 진행).
   function placeActivity(name, start, dur, selCat, forDate) {
     var slots = day(forDate || selectedDate).slots;
@@ -1455,7 +1462,7 @@
       '<option value="etc">미분류</option>';
 
     panel.innerHTML =
-      '<div class="sch-progress">15분 블록 ' + doneN + ' / ' + allLanes.length + ' 실천 · <b>시간 칸을 누르면 그 자리에서 바로 배치</b> · 이미 채워진 칸의 +=같은 시간에 항목 추가(동시 진행) · ✓ 누른 채 드래그=여러 칸 체크/해제 · ⇕ 드래그=같은 활동으로 칸 채우기</div>' +
+      '<div class="sch-progress">15분 블록 ' + doneN + ' / ' + allLanes.length + ' 실천 · <b>시간 칸을 누르면 그 자리에서 바로 배치</b> · 이름을 누르면 같은 시간에 항목 추가(동시 진행) · ✓ 누른 채 드래그=여러 칸 체크/해제 · ⇕ 드래그=같은 활동으로 칸 채우기</div>' +
       balanceHTML(slots) +
       '<div class="timeline" id="timeline"></div>';
 
@@ -1471,7 +1478,13 @@
         '</div>';
     }
     function wireLaneBlock(blockEl, s, mm) {
-      blockEl.querySelector('.name').textContent = s.name;
+      var nameEl = blockEl.querySelector('.name');
+      nameEl.textContent = s.name;
+      nameEl.title = '눌러서 같은 시간에 항목 추가';
+      nameEl.addEventListener('click', function () {
+        addRevealMin = addRevealMin === mm ? null : mm;
+        renderAll();
+      });
       var noteInp = blockEl.querySelector('.note-input');
       noteInp.value = s.note || '';
       noteInp.addEventListener('keydown', function (e) {
@@ -1572,17 +1585,21 @@
           });
         } else {
           var bodyInner = lanes.map(laneBlockHTML).join('');
-          bodyInner += editorMin === mm ? editorHTML(mm)
-            : '<button type="button" class="slot-add-extra" title="같은 시간에 항목 추가">+</button>';
+          if (editorMin === mm) {
+            bodyInner += editorHTML(mm);
+          } else if (lanes.length && addRevealMin === mm) {
+            bodyInner += '<button type="button" class="slot-add-extra" title="같은 시간에 항목 추가">+</button>';
+          }
           row.innerHTML = timeCell + '<div class="slot-body">' + bodyInner + '</div>';
           var blockEls = row.querySelectorAll('.slot-block');
           lanes.forEach(function (s, idx) { wireLaneBlock(blockEls[idx], s, mm); });
           if (editorMin === mm) {
             wireEditor(row, mm);
-          } else {
+          } else if (lanes.length && addRevealMin === mm) {
             row.querySelector('.slot-add-extra').addEventListener('click', function () {
               editorMin = mm;
               editorFocusPending = true;
+              addRevealMin = null;
               renderAll();
             });
           }
