@@ -814,7 +814,7 @@
       html += '<ul class="r-list" id="rList"></ul>' +
         (rs.length ? '' : '<div class="r-empty">예: 아침 물 한 잔, 영단어 10개, 스트레칭 10분 — 루틴은 다음날로 이월되지 않고 날짜마다 새로 체크해요.</div>') +
         '<div class="r-add">' +
-        '<input type="text" id="rNew" maxlength="60" placeholder="새 루틴 추가 (매일 반복)">' +
+        '<input type="text" id="rNew" autocomplete="off" maxlength="60" placeholder="새 루틴 추가 (매일 반복)">' +
         '<button id="rAdd">추가</button></div>';
     }
     html += '</div>';
@@ -1072,7 +1072,7 @@
 
     panel.innerHTML =
       '<div class="add-row">' +
-      '  <input type="text" id="newInbox" placeholder="오늘 할 일을 생각나는 대로 적어보세요…" maxlength="80">' +
+      '  <input type="text" id="newInbox" autocomplete="off" placeholder="오늘 할 일을 생각나는 대로 적어보세요…" maxlength="80">' +
       '  <button class="add" id="addInbox">추가</button>' +
       '</div>' +
       (items.length ? '<div class="cat-progress">' + items.length + '개 · 버튼을 눌러 카테고리로 분류하세요</div>' : '') +
@@ -1142,7 +1142,7 @@
 
     panel.innerHTML =
       '<div class="add-row">' +
-      '  <input type="text" id="newTodo" placeholder="' + CATS[cat].name + ' 할 일 추가…" maxlength="80">' +
+      '  <input type="text" id="newTodo" autocomplete="off" placeholder="' + CATS[cat].name + ' 할 일 추가…" maxlength="80">' +
       '  <button class="add" id="addTodo">추가</button>' +
       '</div>' +
       (todos.length ? '<div class="cat-progress">' + doneN + ' / ' + todos.length + ' 완료</div>' : '') +
@@ -1472,7 +1472,7 @@
         (s.cat && CATS[s.cat] ? ' cat-' + s.cat : '') + '" data-lane="' + s.id + '">' +
         '<button class="chk' + todoChkClass(s) + '" title="' + TODO_CHK_TITLE + '">' + todoChkGlyph(s) + '</button>' +
         '<span class="name' + (s.status === 2 ? ' done' : '') + '"></span>' +
-        '<input class="note-input" maxlength="60" placeholder="세부 작업 메모">' +
+        '<input class="note-input" autocomplete="off" maxlength="60" placeholder="세부 작업 메모">' +
         '<span class="fill-handle" title="드래그해서 같은 활동으로 칸 채우기">⇕</span>' +
         '<button class="icon-btn del" title="이 항목 삭제">✕</button>' +
         '</div>';
@@ -1853,15 +1853,15 @@
     if (lecFormOpen) {
       formHtml =
         '<div class="lec-form">' +
-        '<div class="row2"><div><label>반</label><input type="text" id="lecClass" placeholder="예: 중2 수요반" maxlength="30"></div>' +
-        '<div><label>과목</label><input type="text" id="lecSubject" placeholder="예: 영어 독해" maxlength="30"></div></div>' +
+        '<div class="row2"><div><label>반</label><input type="text" id="lecClass" autocomplete="off" placeholder="예: 중2 수요반" maxlength="30"></div>' +
+        '<div><label>과목</label><input type="text" id="lecSubject" autocomplete="off" placeholder="예: 영어 독해" maxlength="30"></div></div>' +
         '<div class="row2"><div><label>시작</label><input type="time" id="lecStart" step="900" value="16:00"></div>' +
         '<div><label>종료</label><input type="time" id="lecEnd" step="900" value="17:00"></div></div>' +
-        '<div><label>📘 교재명</label><input type="text" id="lecTextbook" placeholder="예: 리딩튜터 기본"></div>' +
+        '<div><label>📘 교재명</label><input type="text" id="lecTextbook" autocomplete="off" placeholder="예: 리딩튜터 기본"></div>' +
         '<div><input type="file" id="lecTextbookImg" accept="image/*,.pdf,.doc,.docx,.hwp,.hwpx,.ppt,.pptx,.xls,.xlsx,.txt" multiple style="display:none">' +
         '<button type="button" class="add" id="lecTextbookImgBtn" style="padding:6px 10px;font-size:12px;">📎 교재 파일</button>' +
         '<div class="thumb-row" id="lectextbookPreview"></div></div>' +
-        '<div><label>🗂 자료명</label><input type="text" id="lecMaterial" placeholder="예: 8월 1주차 프린트"></div>' +
+        '<div><label>🗂 자료명</label><input type="text" id="lecMaterial" autocomplete="off" placeholder="예: 8월 1주차 프린트"></div>' +
         '<div><input type="file" id="lecMaterialImg" accept="image/*,.pdf,.doc,.docx,.hwp,.hwpx,.ppt,.pptx,.xls,.xlsx,.txt" multiple style="display:none">' +
         '<button type="button" class="add" id="lecMaterialImgBtn" style="padding:6px 10px;font-size:12px;">📎 자료 파일</button>' +
         '<div class="thumb-row" id="lecmaterialPreview"></div></div>' +
